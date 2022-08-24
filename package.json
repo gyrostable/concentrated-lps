@@ -1,6 +1,6 @@
 {
   "name": "@gyrostable/vaults",
-  "license": "UNLICENSE",
+  "license": "UNLICENSED",
   "dependencies": {
     "@balancer-labs/v2-pool-utils": "https://gitpkg.now.sh/balancer-labs/balancer-v2-monorepo/pkg/pool-utils?tob-audit-phantom-stable",
     "@balancer-labs/v2-pool-weighted": "https://gitpkg.now.sh/balancer-labs/balancer-v2-monorepo/pkg/pool-weighted?tob-audit-phantom-stable",
