@@ -4,6 +4,7 @@
 pragma solidity ^0.7.0;
 
 import "../GyroTwoMath.sol";
+import "../../../libraries/GyroPoolMath.sol";
 
 contract GyroTwoMathTesting {
     function calculateQuadratic(
@@ -128,7 +129,7 @@ contract GyroTwoMathTesting {
         uint256 bptAmountOut,
         uint256 totalBPT
     ) external pure returns (uint256[] memory) {
-        return GyroTwoMath._calcAllTokensInGivenExactBptOut(balances, bptAmountOut, totalBPT);
+        return GyroPoolMath._calcAllTokensInGivenExactBptOut(balances, bptAmountOut, totalBPT);
     }
 
     function calcTokensOutGivenExactBptIn(
@@ -136,7 +137,7 @@ contract GyroTwoMathTesting {
         uint256 bptAmountIn,
         uint256 totalBPT
     ) external pure returns (uint256[] memory) {
-        return GyroTwoMath._calcTokensOutGivenExactBptIn(balances, bptAmountIn, totalBPT);
+        return GyroPoolMath._calcTokensOutGivenExactBptIn(balances, bptAmountIn, totalBPT);
     }
 
     function calcProtocolFees(
@@ -147,7 +148,7 @@ contract GyroTwoMathTesting {
         uint256 protocolFeeGyroPortion
     ) external pure returns (uint256, uint256) {
         return
-            GyroTwoMath._calcProtocolFees(
+            GyroPoolMath._calcProtocolFees(
                 previousInvariant,
                 currentInvariant,
                 currentBptSupply,

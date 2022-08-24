@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Iterable, List, Tuple, Union, overload
+from typing import Iterable, List, Tuple, Union, overload, NamedTuple, Optional
 
 from tests.support.quantized_decimal import DecimalLike, QuantizedDecimal
 
@@ -38,28 +38,41 @@ def unscale_scalar(x: DecimalLike, decimals: int = 18) -> QuantizedDecimal:
 
 
 @overload
-def scale(x: DecimalLike) -> QuantizedDecimal:
+def scale(x: DecimalLike, decimals=...) -> QuantizedDecimal:
     ...
 
 
 @overload
-def scale(x: Iterable[DecimalLike]) -> List[QuantizedDecimal]:
+def scale(x: Iterable[DecimalLike], decimals=...) -> List[QuantizedDecimal]:
     ...
+
+
+@overload
+def scale(x: NamedTuple, decimals: Optional[int]) -> NamedTuple:
+    ...
+
+
+def isinstance_namedtuple(obj) -> bool:
+    return (
+        isinstance(obj, tuple) and hasattr(obj, "_asdict") and hasattr(obj, "_fields")
+    )
 
 
 def scale(x, decimals=18):
     if isinstance(x, (list, tuple)):
-        return [scale_scalar(v, decimals) for v in x]
+        return [scale(v, decimals) for v in x]
+    if isinstance_namedtuple(x):
+        return type(x)(*[scale(v, decimals) for v in x])
     return scale_scalar(x, decimals)
 
 
 @overload
-def unscale(x: DecimalLike) -> QuantizedDecimal:
+def unscale(x: DecimalLike, decimals=...) -> QuantizedDecimal:
     ...
 
 
 @overload
-def unscale(x: Iterable[DecimalLike]) -> List[QuantizedDecimal]:
+def unscale(x: Iterable[DecimalLike], decimals=...) -> List[QuantizedDecimal]:
     ...
 
 
@@ -69,5 +82,9 @@ def unscale(x, decimals=18):
     return unscale_scalar(x, decimals)
 
 
-def qdecimals(*args, **kwargs) -> st.SearchStrategy[QuantizedDecimal]:
-    return st.decimals(*args, **kwargs).map(QuantizedDecimal)
+def qdecimals(
+    *args, allow_nan=False, allow_infinity=False, **kwargs
+) -> st.SearchStrategy[QuantizedDecimal]:
+    return st.decimals(
+        *args, allow_nan=allow_nan, allow_infinity=allow_infinity, **kwargs
+    ).map(QuantizedDecimal)

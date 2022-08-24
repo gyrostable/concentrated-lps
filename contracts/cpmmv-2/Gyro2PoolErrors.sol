@@ -7,5 +7,5 @@ pragma solidity ^0.7.0;
 
 library Gyro2PoolErrors {
     // Math
-    uint256 internal constant SQRT_PARAMS_WRONG = 0;
+    uint256 internal constant SQRT_PARAMS_WRONG = 350;
 }

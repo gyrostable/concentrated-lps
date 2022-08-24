@@ -3,6 +3,8 @@ from typing import Tuple
 
 import hypothesis.strategies as st
 from brownie.test import given
+from brownie import reverts
+from hypothesis import assume
 from tests.cpmmv2 import math_implementation
 from tests.support.utils import scale, to_decimal
 
@@ -236,12 +238,9 @@ def test_calculate_sqrt(gyro_two_math_testing, input):
 def test_calc_in_given_out(
     gyro_two_math_testing, amount_out, balances: Tuple[int, int], sqrt_alpha, sqrt_beta
 ):
+    assume(amount_out <= to_decimal("0.3") * (balances[1]))
 
-    if amount_out > to_decimal("0.3") * (balances[1]):
-        return
-
-    if faulty_params(balances, sqrt_alpha, sqrt_beta):
-        return
+    assume(not faulty_params(balances, sqrt_alpha, sqrt_beta))
 
     invariant = math_implementation.calculateInvariant(
         to_decimal(balances), to_decimal(sqrt_alpha), to_decimal(sqrt_beta)
@@ -264,14 +263,26 @@ def test_calc_in_given_out(
         to_decimal(invariant),
     )
 
-    in_amount_sol = gyro_two_math_testing.calcInGivenOut(
-        scale(balances[0]),
-        scale(balances[1]),
-        scale(amount_out),
-        scale(virtual_param_in),
-        scale(virtual_param_out),
-        scale(invariant),
-    )
+    if in_amount <= to_decimal("0.3") * balances[0]:
+        in_amount_sol = gyro_two_math_testing.calcInGivenOut(
+            scale(balances[0]),
+            scale(balances[1]),
+            scale(amount_out),
+            scale(virtual_param_in),
+            scale(virtual_param_out),
+            scale(invariant),
+        )
+    else:
+        with reverts("BAL#304"):  # MAX_IN_RATIO
+            gyro_two_math_testing.calcInGivenOut(
+                scale(balances[0]),
+                scale(balances[1]),
+                scale(amount_out),
+                scale(virtual_param_in),
+                scale(virtual_param_out),
+                scale(invariant),
+            )
+        return
 
     assert to_decimal(in_amount_sol) == scale(in_amount).approxed()
 
@@ -285,12 +296,9 @@ def test_calc_in_given_out(
 def test_calc_out_given_in(
     gyro_two_math_testing, amount_in, balances: Tuple[int, int], sqrt_alpha, sqrt_beta
 ):
+    assume(amount_in <= to_decimal("0.3") * (balances[0]))
 
-    if amount_in > to_decimal("0.3") * (balances[0]):
-        return
-
-    if faulty_params(balances, sqrt_alpha, sqrt_beta):
-        return
+    assume(not faulty_params(balances, sqrt_alpha, sqrt_beta))
 
     invariant = math_implementation.calculateInvariant(
         to_decimal(balances), to_decimal(sqrt_alpha), to_decimal(sqrt_beta)
@@ -304,7 +312,7 @@ def test_calc_out_given_in(
         to_decimal(invariant), to_decimal(sqrt_alpha)
     )
 
-    in_amount = math_implementation.calcOutGivenIn(
+    out_amount = math_implementation.calcOutGivenIn(
         to_decimal(balances[0]),
         to_decimal(balances[1]),
         to_decimal(amount_in),
@@ -313,16 +321,28 @@ def test_calc_out_given_in(
         to_decimal(invariant),
     )
 
-    in_amount_sol = gyro_two_math_testing.calcOutGivenIn(
-        scale(balances[0]),
-        scale(balances[1]),
-        scale(amount_in),
-        scale(virtual_param_in),
-        scale(virtual_param_out),
-        scale(invariant),
-    )
+    if out_amount <= to_decimal("0.3") * balances[1]:
+        out_amount_sol = gyro_two_math_testing.calcOutGivenIn(
+            scale(balances[0]),
+            scale(balances[1]),
+            scale(amount_in),
+            scale(virtual_param_in),
+            scale(virtual_param_out),
+            scale(invariant),
+        )
+    else:
+        with reverts("BAL#305"):  # MAX_OUT_RATIO
+            gyro_two_math_testing.calcOutGivenIn(
+                scale(balances[0]),
+                scale(balances[1]),
+                scale(amount_in),
+                scale(virtual_param_in),
+                scale(virtual_param_out),
+                scale(invariant),
+            )
+        return
 
-    assert to_decimal(in_amount_sol) == scale(in_amount).approxed()
+    assert to_decimal(out_amount_sol) == scale(out_amount).approxed()
 
 
 @given(

@@ -213,18 +213,18 @@ def test_calc_out_given_in(
 
     virtual_offset = invariant * to_decimal(root_three_alpha)
 
-    in_amount = math_implementation.calcOutGivenIn(
+    out_amount = math_implementation.calcOutGivenIn(
         to_decimal(balances[0]),
         to_decimal(balances[1]),
         to_decimal(amount_in),
         virtual_offset,
     )
 
-    in_amount_sol = gyro_three_math_testing.calcOutGivenIn(
+    out_amount_sol = gyro_three_math_testing.calcOutGivenIn(
         scale(balances[0]), scale(balances[1]), scale(amount_in), scale(virtual_offset)
     )
 
-    assert to_decimal(in_amount_sol) == scale(in_amount).approxed()
+    assert to_decimal(out_amount_sol) == scale(out_amount).approxed()
 
 
 @given(

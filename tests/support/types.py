@@ -53,3 +53,27 @@ class TwoPoolParams(NamedTuple):
     baseParams: TwoPoolBaseParams
     sqrtAlpha: DecimalLike  # should already be upscaled
     sqrtBeta: DecimalLike  # Should already be upscaled
+
+
+class CEMMMathParams(NamedTuple):
+    alpha: DecimalLike
+    beta: DecimalLike
+    c: DecimalLike
+    s: DecimalLike
+    l: DecimalLike
+
+
+class Vector2(NamedTuple):
+    x: DecimalLike
+    y: DecimalLike
+
+
+class CEMMMathDerivedParams(NamedTuple):
+    tauAlpha: Vector2
+    tauBeta: Vector2
+
+
+class CEMMMathQParams(NamedTuple):
+    a: DecimalLike
+    b: DecimalLike
+    c: DecimalLike

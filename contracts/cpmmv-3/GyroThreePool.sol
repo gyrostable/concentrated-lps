@@ -8,6 +8,7 @@ import "@balancer-labs/v2-solidity-utils/contracts/helpers/BalancerErrors.sol";
 
 import "../../libraries/GyroConfigKeys.sol";
 import "../../interfaces/IGyroConfig.sol";
+import "../../libraries/GyroPoolMath.sol";
 
 import "./ExtensibleBaseWeightedPool.sol";
 import "./GyroThreeMath.sol";
@@ -20,7 +21,7 @@ contract GyroThreePool is ExtensibleBaseWeightedPool {
     using FixedPoint for uint256;
     using WeightedPoolUserDataHelpers for bytes;
 
-    uint256 private _root3Alpha;
+    uint256 private immutable _root3Alpha;
 
     IGyroConfig public gyroConfig;
 
@@ -438,7 +439,7 @@ contract GyroThreePool is ExtensibleBaseWeightedPool {
     {
         uint256 bptAmountOut = userData.allTokensInForExactBptOut();
 
-        uint256[] memory amountsIn = GyroThreeMath._calcAllTokensInGivenExactBptOut(
+        uint256[] memory amountsIn = GyroPoolMath._calcAllTokensInGivenExactBptOut(
             balances,
             bptAmountOut,
             totalSupply()
@@ -477,7 +478,7 @@ contract GyroThreePool is ExtensibleBaseWeightedPool {
         uint256 bptAmountIn = userData.exactBptInForTokensOut();
         // Note that there is no minimum amountOut parameter: this is handled by `IVault.exitPool`.
 
-        uint256[] memory amountsOut = GyroThreeMath._calcTokensOutGivenExactBptIn(
+        uint256[] memory amountsOut = GyroPoolMath._calcTokensOutGivenExactBptIn(
             balances,
             bptAmountIn,
             totalSupply()
@@ -552,7 +553,7 @@ contract GyroThreePool is ExtensibleBaseWeightedPool {
         }
 
         // Calculate fees in BPT
-        (uint256 gyroFees, uint256 balancerFees) = GyroThreeMath._calcProtocolFees(
+        (uint256 gyroFees, uint256 balancerFees) = GyroPoolMath._calcProtocolFees(
             previousInvariant,
             currentInvariant,
             totalSupply(),

@@ -5,6 +5,7 @@ pragma solidity ^0.7.0;
 
 import "../GyroThreeMath.sol";
 import "./GyroThreeMathDebug.sol";
+import "../../../libraries/GyroPoolMath.sol";
 
 contract GyroThreeMathTesting {
     function calculateInvariant(uint256[] memory balances, uint256 root3Alpha)
@@ -106,7 +107,7 @@ contract GyroThreeMathTesting {
         uint256 bptAmountOut,
         uint256 totalBPT
     ) external pure returns (uint256[] memory) {
-        return GyroThreeMath._calcAllTokensInGivenExactBptOut(balances, bptAmountOut, totalBPT);
+        return GyroPoolMath._calcAllTokensInGivenExactBptOut(balances, bptAmountOut, totalBPT);
     }
 
     function calcTokensOutGivenExactBptIn(
@@ -114,7 +115,7 @@ contract GyroThreeMathTesting {
         uint256 bptAmountIn,
         uint256 totalBPT
     ) external pure returns (uint256[] memory) {
-        return GyroThreeMath._calcTokensOutGivenExactBptIn(balances, bptAmountIn, totalBPT);
+        return GyroPoolMath._calcTokensOutGivenExactBptIn(balances, bptAmountIn, totalBPT);
     }
 
     function calculateCbrtPrice(uint256 invariant, uint256 virtualZ)
@@ -133,7 +134,7 @@ contract GyroThreeMathTesting {
         uint256 protocolFeeGyroPortion
     ) external pure returns (uint256, uint256) {
         return
-            GyroThreeMath._calcProtocolFees(
+            GyroPoolMath._calcProtocolFees(
                 previousInvariant,
                 currentInvariant,
                 currentBptSupply,
