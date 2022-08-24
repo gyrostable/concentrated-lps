@@ -1,5 +1,8 @@
 from logging import warning
-from typing import Iterable, List, Tuple
+from math import sqrt
+from typing import Iterable, List, Tuple, Callable
+
+from tests.support.utils import scale, to_decimal, unscale, qdecimals
 
 import numpy as np
 from tests.support.quantized_decimal import QuantizedDecimal as D
@@ -54,6 +57,14 @@ def calculateInvariantNewton(
     #         to_decimal(invariant))
     x, y, z = balances
 
+    # Lower-order special case
+    # if d == 0:
+    #     # ac = c - c * alpha1 * alpha1 * alpha1
+    #     ac = a * c
+    #     l = (-b + (b**2 - ac * 4).sqrt()) / (2 * a)
+    #     return l, log
+
+
     lmin = -b / (a * 3) + (b ** 2 - a * c * 3).sqrt() / (
         a * 3
     )  # Sqrt is not gonna make a problem b/c all summands are positive.
@@ -68,57 +79,117 @@ def calculateInvariantNewton(
 
     while True:
         # delta = f(l)/f'(l)
-        f_l = a * l ** 3 + b * l ** 2 + c * l + d
+        l3 = l**3
+        l2 = l**2
+
+        # Ordering optimization. This is crucial to get us the final couple decimals precision.
+        # f_l = a * l3 + b * l2 + c * l + d
+        f_l = l3 - l3 * alpha1 * alpha1 * alpha1 + l2 * b + c * l + d
 
         # Compute derived values for comparison:
-        # TESTING only; could base the exit condition on this if I really wanted
-        gamma = l ** 2 / ((x + l * alpha1) * (y + l * alpha1))  # 3√(px py)
-        px = (z + l * alpha1) / (x + l * alpha1)
-        py = (z + l * alpha1) / (y + l * alpha1)
-        x1 = l * (gamma / px - alpha1)
-        y1 = l * (gamma / py - alpha1)
-        z1 = l * (gamma - alpha1)
+        # (slightly more involved exit condition here)
+        dx, dy, dz = invariantErrorsInAssets(l, balances, alpha1)
 
-        log.append(dict(l=l, delta=delta, f_l=f_l, dx=x1 - x, dy=y1 - y, dz=z1 - z))
+        log.append(dict(l=l, delta=delta, f_l=f_l, dx=dx, dy=dy, dz=dz))
 
         # if abs(f_l) < prec_convergence:
         if (
-            abs(x - x1) < prec_convergence
-            and abs(y - y1) < prec_convergence
-            and abs(z - z1) < prec_convergence
+            abs(dx) < prec_convergence
+            and abs(dy) < prec_convergence
+            and abs(dz) < prec_convergence
         ):
             return l, log
-        df_l = a * 3 * l ** 2 + b * 2 * l + c
-        delta = f_l / df_l
+
+        # Ordering optimization. Doesn't seem to matter as much as the first one above.
+        # df_l = a * 3 * l ** 2 + b * 2 * l + c
+        df_l = 3 * l2 - 3 * l2 * alpha1 * alpha1 * alpha1 + l * b * 2 + c
+        delta = - f_l / df_l
 
         # delta==0 can happen with poor numerical precision! In this case, this is all we can get.
         if delta_pre is not None and (delta == 0 or f_l < 0):
-            warning("Early exit due to numerical instability")
+            # warning("Early exit due to numerical instability")
             return l, log
 
-        l -= delta
+        l += delta
         delta_pre = delta
 
 
-def liquidityInvariantUpdate(
-    balances: List[D],
-    root3Alpha: D,
-    lastInvariant: D,
-    deltaBalances: List[D],
-    isIncreaseLiq: bool,
-) -> D:
-    indices = maxOtherBalances(balances)
-    # virtual offsets
-    virtualOffset = lastInvariant * root3Alpha
-    # cube root of p_x p_y
-    cbrtPxPy = calculateCbrtPrice(lastInvariant, balances[indices[0]] + virtualOffset)
-    diffInvariant = deltaBalances[indices[0]] / (cbrtPxPy - root3Alpha)
+def invariantErrorsInAssets(l, balances: Iterable, root3Alpha):
+    """Error of l measured in assets. This is ONE way to do it.
 
-    if isIncreaseLiq == True:
-        invariant = lastInvariant + diffInvariant
-    else:
-        invariant = lastInvariant - diffInvariant
-    return invariant
+    We have invariantErrorsInAssets(l, ...) == 0 iff l is the correct invariant. But this scales differently.
+
+    Type agnostic: Pass D to get D calculations or float to get float calculations."""
+    x, y, z = balances
+
+    gamma = l ** 2 / ((x + l * root3Alpha) * (y + l * root3Alpha))  # 3√(px py)
+    px = (z + l * root3Alpha) / (x + l * root3Alpha)
+    py = (z + l * root3Alpha) / (y + l * root3Alpha)
+    x1 = l * (gamma / px - root3Alpha)
+    y1 = l * (gamma / py - root3Alpha)
+    z1 = l * (gamma - root3Alpha)
+
+    return x1 - x, y1 - y, z1 - z
+
+
+def invariantFunctionsFloat(
+    balances: Iterable[D], root3Alpha: D
+) -> tuple[Callable, Callable]:
+    a, mb, mc, md = calculateCubicTermsFloat(map(float, balances), float(root3Alpha))
+
+    def f(l):
+        # res = a * l**3 - mb * l**2 - mc * l - md
+        # To prevent catastrophic elimination. Note this makes a BIG difference ito f values, but not ito computed l
+        # values.
+        res = ((a * l - mb) * l - mc) * l - md
+        # print(f" f({l})".ljust(22) + f"= {res}")  # DEBUG OUTPUT
+        return res
+
+    def df(l):
+        # res = 3 * a * l**2 - 2 * mb * l - mc
+        res = (3 * a * l - 2 * mb) * l - mc
+        # print(f"df({l})".ljust(22) + f"= {res}")  # DEBUG OUTPUT
+        return res
+
+    return f, df
+
+
+def calculateInvariantAltFloatWithInfo(balances: Iterable[D], root3Alpha: D):
+    """Alternative implementation of the invariant calculation that can't be done in Solidity. Should match
+    calculateInvariant() to a high degree of accuracy.
+
+    Version that also returns debug info.
+
+    Don't rely on anything but the 'root' component!"""
+    from scipy.optimize import root_scalar
+
+    f, df = invariantFunctionsFloat(balances, root3Alpha)
+    a, mb, mc, md = calculateCubicTermsFloat(map(float, balances), float(root3Alpha))
+
+    # See CPMMV writeup, appendix A.1
+    l_m = mb / (3 * a)
+    l_plus = l_m + sqrt(l_m ** 2 + mc)
+    l_0 = 1.5 * l_plus
+
+    res = root_scalar(f, fprime=df, x0=l_0, rtol=1e-18, xtol=1e-18)
+
+    return dict(root=res.root, f=f, root_results=res, l_0=l_0)
+
+
+def calculateInvariantAltFloat(balances: Iterable[D], root3Alpha: D) -> float:
+    return calculateInvariantAltFloatWithInfo(balances, root3Alpha)["root"]
+
+
+def calculateCubicTermsFloat(
+    balances: Iterable[float], root3Alpha: float
+) -> tuple[float, float, float, float]:
+    x, y, z = balances
+    a = 1 - root3Alpha * root3Alpha * root3Alpha
+    b = -(x + y + z) * root3Alpha * root3Alpha
+    c = -(x * y + y * z + z * x) * root3Alpha
+    d = -x * y * z
+    assert a > 0 and b < 0 and c <= 0 and d <= 0
+    return a, -b, -c, -d
 
 
 def maxOtherBalances(balances: List[D]) -> List[int]:
@@ -149,9 +220,8 @@ def calcOutGivenIn(balanceIn: D, balanceOut: D, amountIn: D, virtualOffset: D) -
     assert amountIn <= balanceIn * _MAX_IN_RATIO
     virtIn = balanceIn + virtualOffset
     virtOut = balanceOut + virtualOffset
-    # minus b/c amountOut is negative
-    amountOut = -(virtIn * virtOut / (virtIn + amountIn) - virtOut)
-    assert amountOut <= balanceOut * _MAX_OUT_RATIO
+    amountOut = virtOut.mul_down(amountIn).div_up(virtIn + amountIn)
+    # assert amountOut <= balanceOut * _MAX_OUT_RATIO
     return amountOut
 
 
@@ -159,46 +229,80 @@ def calcInGivenOut(balanceIn: D, balanceOut: D, amountOut: D, virtualOffset: D) 
     assert amountOut <= balanceOut * _MAX_OUT_RATIO
     virtIn = balanceIn + virtualOffset
     virtOut = balanceOut + virtualOffset
-    amountIn = virtIn * virtOut / (virtOut - amountOut) - virtIn
-    assert amountIn <= balanceIn * _MAX_IN_RATIO
+    amountIn = virtIn.mul_up(amountOut).div_up(virtOut - amountOut)
+    # assert amountIn <= balanceIn * _MAX_IN_RATIO
     return amountIn
 
 
-def calcAllTokensInGivenExactBptOut(
-    balances: Iterable[D], bptAmountOut: D, totalBPT: D
-) -> Tuple[D, D, D]:
-    bptRatio = bptAmountOut / totalBPT
-    x, y, z = balances
-    return x * bptRatio, y * bptRatio, z * bptRatio
+def calcNewtonDelta(a: D, mb: D, mc: D, md: D, alpha1: D, l: D) -> tuple[D, bool]:
+    a, mb, mc, md, l = map(to_decimal, (a, mb, mc, md, l))
+
+    # Copied from the Newton iteration.
+
+    b, c, d = -mb, -mc, -md
+
+    l3 = l ** 3
+    l2 = l ** 2
+    f_l = l3 - l3 * alpha1 * alpha1 * alpha1 + l2 * b + c * l + d
+    df_l = 3 * l2 - 3 * l2 * alpha1 * alpha1 * alpha1 + l * b * 2 + c
+    delta = - f_l / df_l
+
+    return abs(delta), delta >= 0
 
 
-def calcTokensOutGivenExactBptIn(
-    balances: Iterable[D], bptAmountIn: D, totalBPT: D
-) -> Tuple[D, D, D]:
-    bptRatio = bptAmountIn / totalBPT
-    x, y, z = balances
-    return x * bptRatio, y * bptRatio, z * bptRatio
+def calcNewtonDeltaDown(a: D, mb: D, mc: D, md: D, rootEst: D) -> tuple[D, bool]:
+    (a, mb, mc, md, rootEst) = (D(a), D(mb), D(mc), D(md), D(rootEst))
+    # dfRootEst = rootEst * rootEst * (D(3) * a) - rootEst.mul_up(D(2) * mb) - mc
+    # deltaMinus = rootEst.mul_up(rootEst).mul_up(rootEst).mul_up(a).div_up(dfRootEst)
+    # deltaPlus = (rootEst * rootEst * mb + rootEst * mc) / dfRootEst + md / dfRootEst
+    dfRootEst = rootEst.mul_up(rootEst).mul_up(D(3) * a) - rootEst.mul_down(D(2) * mb) - mc
+    deltaMinus = rootEst.mul_down(rootEst).mul_down(rootEst).mul_down(a).div_down(dfRootEst)
+    deltaPlus = (rootEst.mul_up(rootEst).mul_up(mb) + rootEst.mul_up(mc)).div_up(dfRootEst) + md.div_up(dfRootEst)
+
+    # DEBUG
+    print(f"df        = {dfRootEst}")
+    print(f"deltaPlus = {deltaPlus}")
+    print(f"deltaMinus= {deltaMinus}")
+
+    if deltaPlus >= deltaMinus:
+        deltaAbs = deltaPlus - deltaMinus
+        deltaIsPos = True
+    else:
+        deltaAbs = deltaMinus - deltaPlus
+        deltaIsPos = False
+    return deltaAbs, deltaIsPos
 
 
-def calcProtocolFees(
-    previousInvariant: D,
-    currentInvariant: D,
-    currentBptSupply: D,
-    protocolSwapFeePerc: D,
-    protocolFeeGyroPortion: D,
-) -> Tuple[D, D]:
-    if currentInvariant <= previousInvariant:
-        return D(0), D(0)
 
-    diffInvariant = protocolSwapFeePerc * (currentInvariant - previousInvariant)
-    numerator = diffInvariant * currentBptSupply
-    denominator = currentInvariant - diffInvariant
-    deltaS = numerator / denominator
-
-    gyroFees = protocolFeeGyroPortion * deltaS
-    balancerFees = deltaS - gyroFees
-    return gyroFees, balancerFees
+def calcNewtonDelta1(a: D, mb: D, mc: D, md: D, rootEst: D) -> tuple[D, bool]:
+    """Alternative implementation with slightly different rounding behavior."""
+    l = rootEst
+    # Signs: "minus" refers to the delta, not to f(l)!
+    f_l_minus = a * l ** 3
+    f_l_plus = mb * l ** 2 + mc * l + md
+    f_l = f_l_minus - f_l_plus
+    df_l = a * 3 * l ** 2 - mb * 2 * l - mc
+    print(f"f_l = {f_l}")
+    print(f"df_l = {df_l}")
+    print(f"f_l_plus / df_l = {f_l_plus / df_l}")
+    print(f"f_l_minus / df_l = {f_l_minus / df_l}")
+    delta = (f_l_plus - f_l_minus) / df_l
+    return abs(delta), delta >= 0
 
 
-def calculateCbrtPrice(invariant: D, virtualZ: D) -> D:
-    return virtualZ / invariant
+def finalIteration(a: D, mb: D, mc: D, md: D, rootEst: D) -> tuple[D, bool]:
+    (a, mb, mc, md, rootEst) = (D(a), D(mb), D(mc), D(md), D(rootEst))
+    if isInvariantUnderestimated(a, mb, mc, md, rootEst):
+        return (rootEst, True)
+    else:
+        (deltaAbs, deltaIsPos) = calcNewtonDelta(a, mb, mc, md, rootEst)
+        step = rootEst.mul_up(unscale(D("1e4")))
+        if step <= deltaAbs:
+            step = deltaAbs
+        rootEst = rootEst - step
+        return (rootEst, isInvariantUnderestimated(a, mb, mc, md, rootEst))
+
+
+def isInvariantUnderestimated(a: D, mb: D, mc: D, md: D, L: D) -> bool:
+    (a, mb, mc, md, L) = (D(a), D(mb), D(mc), D(md), D(L))
+    return L.mul_up(L).mul_up(L).mul_up(a) - L * L * mb - L * mc - md <= 0

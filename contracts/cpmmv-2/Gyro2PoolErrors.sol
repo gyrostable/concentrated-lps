@@ -8,4 +8,5 @@ pragma solidity ^0.7.0;
 library Gyro2PoolErrors {
     // Math
     uint256 internal constant SQRT_PARAMS_WRONG = 350;
+    uint256 internal constant ASSET_BOUNDS_EXCEEDED = 357; //NB this is the same as the CEMM
 }

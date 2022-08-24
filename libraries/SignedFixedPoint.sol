@@ -11,6 +11,9 @@ import "@balancer-labs/v2-solidity-utils/contracts/helpers/BalancerErrors.sol";
 /// @dev Signed fixed point operations based on Balancer's FixedPoint library.
 library SignedFixedPoint {
     int256 internal constant ONE = 1e18; // 18 decimal places
+    // setting extra precision at 38 decimals, which is the most we can get w/o overflowing on normal multiplication
+    // this allows 20 extra digits to absorb error when multiplying by large numbers
+    int256 internal constant ONE_XP = 1e38; // 38 decimal places
     int256 internal constant MAX_POW_RELATIVE_ERROR = 10000; // 10^(-14)
 
     // Minimum base for the power function when the exponent is 'free' (larger than ONE).
@@ -22,6 +25,11 @@ library SignedFixedPoint {
         int256 c = a + b;
         _require(b >= 0 ? c >= a : c < a, Errors.ADD_OVERFLOW);
         return c;
+    }
+
+    function addMag(int256 a, int256 b) internal pure returns (int256 c) {
+        // add b in the same signed direction as a, i.e. increase the magnitude of a by b
+        c = a > 0 ? add(a, b) : sub(a, b);
     }
 
     function sub(int256 a, int256 b) internal pure returns (int256) {
@@ -50,12 +58,10 @@ library SignedFixedPoint {
         // If product > 0, the result should be ceil(p/ONE) = floor((p-1)/ONE) + 1, where floor() is implicit. If
         // product < 0, the result should be floor(p/ONE) = ceil((p+1)/ONE) - 1, where ceil() is implicit.
         // Addition for signed numbers: Case selection so we round away from 0, not always up.
-        if (product > 0)
-            return ((product - 1) / ONE) + 1;
-        else if (product < 0)
-            return ((product + 1) / ONE) - 1;
-        else  // product == 0
-            return 0;
+        if (product > 0) return ((product - 1) / ONE) + 1;
+        else if (product < 0) return ((product + 1) / ONE) - 1;
+        // product == 0
+        else return 0;
     }
 
     /// @dev Rounds towards 0, i.e., down in absolute value.
@@ -82,11 +88,61 @@ library SignedFixedPoint {
             int256 aInflated = a * ONE;
             _require(aInflated / a == ONE, Errors.DIV_INTERNAL); // mul overflow
 
-            if (aInflated > 0)
-                return ((aInflated - 1) / b) + 1;
-            else
-                return ((aInflated + 1) / b) - 1;
+            if (aInflated > 0) return ((aInflated - 1) / b) + 1;
+            else return ((aInflated + 1) / b) - 1;
         }
+    }
+
+    /// @dev multiplies two extra precision numbers (with 38 decimals)
+    /// rounds down in magnitude but this shouldn't matter
+    /// multiplication can overflow if a,b are > 2 in magnitude
+    function mulXp(int256 a, int256 b) internal pure returns (int256) {
+        int256 product = a * b;
+        _require(a == 0 || product / a == b, Errors.MUL_OVERFLOW);
+
+        return product / ONE_XP;
+    }
+
+    /// @dev divides two extra precision numbers (with 38 decimals)
+    /// rounds down in magnitude but this shouldn't matter
+    /// can overflow if a > 2 or b << 1 in magnitude
+    function divXp(int256 a, int256 b) internal pure returns (int256) {
+        _require(b != 0, Errors.ZERO_DIVISION);
+
+        if (a == 0) {
+            return 0;
+        } else {
+            int256 aInflated = a * ONE_XP;
+            _require(aInflated / a == ONE_XP, Errors.DIV_INTERNAL); // mul overflow
+
+            return aInflated / b;
+        }
+    }
+
+    /// @dev multiplies normal precision a with extra precision b (with 38 decimals)
+    /// Rounds down in signed direction
+    /// returns normal precision of the product
+    function mulDownXpToNp(int256 a, int256 b) internal pure returns (int256) {
+        int256 b1 = b / 1e19;
+        int256 b2 = b % 1e19;
+        int256 prod1 = a * b1;
+        _require(a == 0 || prod1 / a == b1, Errors.MUL_OVERFLOW);
+        int256 prod2 = a * b2;
+        _require(a == 0 || prod2 / a == b2, Errors.MUL_OVERFLOW);
+        return prod1 >= 0 && prod2 >= 0 ? (prod1 + prod2 / 1e19) / 1e19 : (prod1 + prod2 / 1e19 + 1) / 1e19 - 1;
+    }
+
+    /// @dev multiplies normal precision a with extra precision b (with 38 decimals)
+    /// Rounds up in signed direction
+    /// returns normal precision of the product
+    function mulUpXpToNp(int256 a, int256 b) internal pure returns (int256) {
+        int256 b1 = b / 1e19;
+        int256 b2 = b % 1e19;
+        int256 prod1 = a * b1;
+        _require(a == 0 || prod1 / a == b1, Errors.MUL_OVERFLOW);
+        int256 prod2 = a * b2;
+        _require(a == 0 || prod2 / a == b2, Errors.MUL_OVERFLOW);
+        return prod1 <= 0 && prod2 <= 0 ? (prod1 + prod2 / 1e19) / 1e19 : (prod1 + prod2 / 1e19 - 1) / 1e19 + 1;
     }
 
     // TODO not implementing the pow functions right now b/c it's annoying and slightly ill-defined, and we prob don't need them.
@@ -127,8 +183,7 @@ library SignedFixedPoint {
      * prevents intermediate negative values.
      */
     function complement(int256 x) internal pure returns (int256) {
-        if (x >= ONE || x <= 0)
-            return 0;
+        if (x >= ONE || x <= 0) return 0;
         return ONE - x;
     }
 }

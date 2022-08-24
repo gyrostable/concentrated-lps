@@ -7,3 +7,12 @@ compiler:
     remappings:
       - "@balancer-labs=node_modules/@balancer-labs"
       - "@openzeppelin=node_modules/@openzeppelin"
+
+networks:
+  development:
+    cmd_settings:
+      evm_version: istanbul
+      unlimited_contract_size: True
+  mainnet-fork:
+    cmd_settings:
+      evm_version: istanbul

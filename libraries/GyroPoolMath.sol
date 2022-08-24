@@ -10,6 +10,18 @@ import "@balancer-labs/v2-solidity-utils/contracts/helpers/InputHelpers.sol";
 library GyroPoolMath {
     using FixedPoint for uint256;
 
+    uint256 private constant SQRT_1E_NEG_1 = 316227766016837933;
+    uint256 private constant SQRT_1E_NEG_3 = 31622776601683793;
+    uint256 private constant SQRT_1E_NEG_5 = 3162277660168379;
+    uint256 private constant SQRT_1E_NEG_7 = 316227766016837;
+    uint256 private constant SQRT_1E_NEG_9 = 31622776601683;
+    uint256 private constant SQRT_1E_NEG_11 = 3162277660168;
+    uint256 private constant SQRT_1E_NEG_13 = 316227766016;
+    uint256 private constant SQRT_1E_NEG_15 = 31622776601;
+    uint256 private constant SQRT_1E_NEG_17 = 316227766;
+
+    uint256 private constant MIN_NEWTON_STEP_SIZE = 5;
+
     // Note: this function is identical to that in WeightedMath.sol audited by Balancer
     function _calcAllTokensInGivenExactBptOut(
         uint256[] memory balances,
@@ -96,10 +108,9 @@ library GyroPoolMath {
         // We round down to prevent issues in the Pool's accounting, even if it means paying slightly less in protocol
         // fees to the Vault.
         // For the numerator, we need to round down delta L. Also for the denominator b/c subtracted
-        uint256 diffInvariant = protocolSwapFeePerc.mulDown(
-            currentInvariant.sub(previousInvariant)
-        );
-        uint256 numerator = diffInvariant.mulDown(currentBptSupply);
+        // Ordering multiplications for best fixed point precision considering that S and currentInvariant-previousInvariant could be large
+        uint256 numerator = (currentBptSupply.mulDown(currentInvariant.sub(previousInvariant))).mulDown(protocolSwapFeePerc);
+        uint256 diffInvariant = protocolSwapFeePerc.mulDown(currentInvariant.sub(previousInvariant));
         uint256 denominator = currentInvariant.sub(diffInvariant);
         uint256 deltaS = numerator.divDown(denominator);
 
@@ -108,5 +119,185 @@ library GyroPoolMath {
         uint256 balancerFees = deltaS.sub(gyroFees);
 
         return (gyroFees, balancerFees);
+    }
+
+    /** @dev Implements square root algorithm using Newton's method and a first-guess optimisation **/
+    function _sqrt(uint256 input, uint256 tolerance) internal pure returns (uint256) {
+        if (input == 0) {
+            return 0;
+        }
+
+        uint256 guess = _makeInitialGuess(input);
+
+        // 7 iterations
+        guess = (guess + ((input * FixedPoint.ONE) / guess)) / 2;
+        guess = (guess + ((input * FixedPoint.ONE) / guess)) / 2;
+        guess = (guess + ((input * FixedPoint.ONE) / guess)) / 2;
+        guess = (guess + ((input * FixedPoint.ONE) / guess)) / 2;
+        guess = (guess + ((input * FixedPoint.ONE) / guess)) / 2;
+        guess = (guess + ((input * FixedPoint.ONE) / guess)) / 2;
+        guess = (guess + ((input * FixedPoint.ONE) / guess)) / 2;
+
+        // Check in some epsilon range
+        // Check square is more or less correct
+        uint256 guessSquared = guess.mulDown(guess);
+        require(guessSquared <= input.add(guess.mulUp(tolerance)) && guessSquared >= input.sub(guess.mulUp(tolerance)), "_sqrt FAILED");
+
+        return guess;
+    }
+
+    // function _makeInitialGuess10(uint256 input) internal pure returns (uint256) {
+    //     uint256 orderUpperBound = 72;
+    //     uint256 orderLowerBound = 0;
+    //     uint256 orderMiddle;
+
+    //     orderMiddle = (orderUpperBound + orderLowerBound) / 2;
+
+    //     while (orderUpperBound - orderLowerBound != 1) {
+    //         if (10**orderMiddle > input) {
+    //             orderUpperBound = orderMiddle;
+    //         } else {
+    //             orderLowerBound = orderMiddle;
+    //         }
+    //     }
+
+    //     return 10**(orderUpperBound / 2);
+    // }
+
+    function _makeInitialGuess(uint256 input) internal pure returns (uint256) {
+        if (input >= FixedPoint.ONE) {
+            return (1 << (_intLog2Halved(input / FixedPoint.ONE))) * FixedPoint.ONE;
+        } else {
+            if (input < 10) {
+                return SQRT_1E_NEG_17;
+            }
+            if (input < 1e2) {
+                return 1e10;
+            }
+            if (input < 1e3) {
+                return SQRT_1E_NEG_15;
+            }
+            if (input < 1e4) {
+                return 1e11;
+            }
+            if (input < 1e5) {
+                return SQRT_1E_NEG_13;
+            }
+            if (input < 1e6) {
+                return 1e12;
+            }
+            if (input < 1e7) {
+                return SQRT_1E_NEG_11;
+            }
+            if (input < 1e8) {
+                return 1e13;
+            }
+            if (input < 1e9) {
+                return SQRT_1E_NEG_9;
+            }
+            if (input < 1e10) {
+                return 1e14;
+            }
+            if (input < 1e11) {
+                return SQRT_1E_NEG_7;
+            }
+            if (input < 1e12) {
+                return 1e15;
+            }
+            if (input < 1e13) {
+                return SQRT_1E_NEG_5;
+            }
+            if (input < 1e14) {
+                return 1e16;
+            }
+            if (input < 1e15) {
+                return SQRT_1E_NEG_3;
+            }
+            if (input < 1e16) {
+                return 1e17;
+            }
+            if (input < 1e17) {
+                return SQRT_1E_NEG_1;
+            }
+            return input;
+        }
+    }
+
+    function _intLog2Halved(uint256 x) public pure returns (uint256 n) {
+        if (x >= 1 << 128) {
+            x >>= 128;
+            n += 64;
+        }
+        if (x >= 1 << 64) {
+            x >>= 64;
+            n += 32;
+        }
+        if (x >= 1 << 32) {
+            x >>= 32;
+            n += 16;
+        }
+        if (x >= 1 << 16) {
+            x >>= 16;
+            n += 8;
+        }
+        if (x >= 1 << 8) {
+            x >>= 8;
+            n += 4;
+        }
+        if (x >= 1 << 4) {
+            x >>= 4;
+            n += 2;
+        }
+        if (x >= 1 << 2) {
+            x >>= 2;
+            n += 1;
+        }
+    }
+
+    /** @dev If liquidity update is proportional so that price stays the same ("balanced liquidity update"), then this
+     *  returns the invariant after that change. This is more efficient than calling `calculateInvariant()` on the updated balances.
+     *  `isIncreaseLiq` denotes the sign of the update. See the writeup, Corollary 3 in Section 2.1.5. */
+    function liquidityInvariantUpdate(
+        uint256 uinvariant,
+        uint256 changeBptSupply,
+        uint256 currentBptSupply,
+        bool isIncreaseLiq
+    ) internal pure returns (uint256 unewInvariant) {
+        //  change in invariant
+        if (isIncreaseLiq) {
+            // round new invariant up so that protocol fees not triggered
+            uint256 dL = uinvariant.mulUp(changeBptSupply).divUp(currentBptSupply);
+            unewInvariant = uinvariant.add(dL);
+        } else {
+            // round new invariant up (and so round dL down) so that protocol fees not triggered
+            uint256 dL = uinvariant.mulDown(changeBptSupply).divDown(currentBptSupply);
+            unewInvariant = uinvariant.sub(dL);
+        }
+    }
+
+    /** @dev If `deltaBalances` are such that, when changing `balances` by it, the price stays the same ("balanced
+     * liquidity update"), then this returns the invariant after that change. This is more efficient than calling
+     * `calculateInvariant()` on the updated balances. `isIncreaseLiq` denotes the sign of the update.
+     * See the writeup, Corollary 3 in Section 2.1.5.
+     *
+     * DEPRECATED and will go out of use and be removed once pending changes to the CEMM are merged. Use the other liquidityInvariantUpdate() function instead!
+     */
+    function liquidityInvariantUpdate(
+        uint256[] memory balances,
+        uint256 uinvariant,
+        uint256[] memory deltaBalances,
+        bool isIncreaseLiq
+    ) internal pure returns (uint256 unewInvariant) {
+        uint256 largestBalanceIndex;
+        uint256 largestBalance;
+        for (uint256 i = 0; i < balances.length; i++) {
+            if (balances[i] > largestBalance) {
+                largestBalance = balances[i];
+                largestBalanceIndex = i;
+            }
+        }
+
+        uint256 deltaInvariant = uinvariant.mulDown(deltaBalances[largestBalanceIndex]).divDown(balances[largestBalanceIndex]);
+        unewInvariant = isIncreaseLiq ? uinvariant.add(deltaInvariant) : uinvariant.sub(deltaInvariant);
     }
 }
