@@ -1,0 +1,7 @@
+{
+    "solidity.compileUsingRemoteVersion": "v0.7.6+commit.7338295f",
+    "solidity.linter": "solhint",
+    "editor.formatOnSave": true,
+    "editor.formatOnSaveMode": "file",
+    "python.formatting.provider": "black"
+}

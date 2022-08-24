@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "es2019",
+    "module": "commonjs",
+    "strict": true,
+    "esModuleInterop": true,
+    "outDir": "dist",
+    "skipLibCheck": true,
+    "declaration": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "test",
+    "node_modules/@balancer-labs/v2-helpers",
+    "node_modules/@balancer-labs/v2-common"
+  ],
+  "files": ["./hardhat.config.ts"]
+}
