@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: UNLICENSE
-pragma solidity ^0.7.0;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.7.6;
 
 import "../../interfaces/IGyroConfig.sol";
 import "../../libraries/GyroConfigKeys.sol";

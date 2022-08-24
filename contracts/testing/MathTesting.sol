@@ -1,12 +1,13 @@
-// SPDX-License-Identifier: UNLICENSE
+// SPDX-License-Identifier: UNLICENSED
 
-pragma solidity ^0.7.0;
+pragma solidity 0.7.6;
 
-import "@balancer-labs/v2-solidity-utils/contracts/math/FixedPoint.sol";
+// import "@balancer-labs/v2-solidity-utils/contracts/math/FixedPoint.sol";
+import "../../libraries/GyroFixedPoint.sol";
 import "../../libraries/GyroPoolMath.sol";
 
 contract MathTesting {
-    using FixedPoint for uint256;
+    using GyroFixedPoint for uint256;
 
     function add(uint256 a, uint256 b) external pure returns (uint256) {
         return a.add(b);
@@ -26,7 +27,7 @@ contract MathTesting {
 
     function sqrt(uint256 a) external pure returns (uint256) {
         //        return a.powDown(FixedPoint.ONE / 2);
-        return a.powUp(FixedPoint.ONE / 2);
+        return a.powUp(GyroFixedPoint.ONE / 2);
     }
 
     function sqrtNewton(uint256 input, uint256 tolerance) external pure returns (uint256) {

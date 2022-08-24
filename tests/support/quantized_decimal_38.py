@@ -32,9 +32,9 @@ decimal.getcontext().prec = MAX_PREC_VALUE
 def set_decimals(ndecimals: int):
     global DECIMAL_PRECISION, DECIMAL_MULT, QUANTIZED_EXP
     DECIMAL_PRECISION = ndecimals
-    QUANTIZED_EXP = decimal.Decimal(1) / decimal.Decimal(10 ** DECIMAL_PRECISION)
+    QUANTIZED_EXP = decimal.Decimal(1) / decimal.Decimal(10**DECIMAL_PRECISION)
     # 1.000000... multiplier to increase the precision to the required level by multiplying
-    DECIMAL_MULT = QUANTIZED_EXP * decimal.Decimal(10 ** DECIMAL_PRECISION)
+    DECIMAL_MULT = QUANTIZED_EXP * decimal.Decimal(10**DECIMAL_PRECISION)
 
 
 set_decimals(38)

@@ -37,7 +37,10 @@ def unscale_scalar(x: DecimalLike, decimals: int = 18) -> QuantizedDecimal:
     # This is necessary to support very large integers; otherwise, we get an error at
     # to_decimal(x) already.
     if isinstance(x, int):
-        return to_decimal(x // 10**decimals) + to_decimal(x % 10**decimals) / 10**decimals
+        return (
+            to_decimal(x // 10**decimals)
+            + to_decimal(x % 10**decimals) / 10**decimals
+        )
     return to_decimal(x) / 10**decimals
 
 
@@ -85,10 +88,12 @@ def unscale(x, decimals=18):
         return [unscale_scalar(v, decimals) for v in x]
     return unscale_scalar(x, decimals)
 
+
 def approxed(x, abs=None, rel=None):
     if isinstance(x, (list, tuple)):
         return [approxed(v, abs, rel) for v in x]
     return to_decimal(x).approxed()
+
 
 def apply_deep(x, f):
     # Order matters b/c named tuples are tuples.
@@ -107,5 +112,9 @@ def qdecimals(
     if isinstance(max_value, QuantizedDecimal):
         max_value = max_value.raw
     return st.decimals(
-        min_value, max_value, allow_nan=allow_nan, allow_infinity=allow_infinity, **kwargs
+        min_value,
+        max_value,
+        allow_nan=allow_nan,
+        allow_infinity=allow_infinity,
+        **kwargs
     ).map(QuantizedDecimal)

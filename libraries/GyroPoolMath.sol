@@ -12,14 +12,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-pragma solidity ^0.7.0;
+pragma solidity 0.7.6;
 
-import "@balancer-labs/v2-solidity-utils/contracts/math/FixedPoint.sol";
+// import "@balancer-labs/v2-solidity-utils/contracts/math/FixedPoint.sol";
+import "./GyroFixedPoint.sol";
 import "@balancer-labs/v2-solidity-utils/contracts/math/Math.sol";
 import "@balancer-labs/v2-solidity-utils/contracts/helpers/InputHelpers.sol";
 
 library GyroPoolMath {
-    using FixedPoint for uint256;
+    using GyroFixedPoint for uint256;
 
     uint256 private constant SQRT_1E_NEG_1 = 316227766016837933;
     uint256 private constant SQRT_1E_NEG_3 = 31622776601683793;
@@ -29,31 +30,27 @@ library GyroPoolMath {
     uint256 private constant SQRT_1E_NEG_11 = 3162277660168;
     uint256 private constant SQRT_1E_NEG_13 = 316227766016;
     uint256 private constant SQRT_1E_NEG_15 = 31622776601;
-    uint256 private constant SQRT_1E_NEG_17 = 316227766;
-
-    uint256 private constant MIN_NEWTON_STEP_SIZE = 5;
+    uint256 private constant SQRT_1E_NEG_17 = 3162277660;
 
     // Note: this function is identical to that in WeightedMath.sol audited by Balancer
     function _calcAllTokensInGivenExactBptOut(
         uint256[] memory balances,
-        uint256 bptAmountOut,
+        uint256 bptOut,
         uint256 totalBPT
-    ) internal pure returns (uint256[] memory) {
+    ) internal pure returns (uint256[] memory amountsIn) {
         /************************************************************************************
         // tokensInForExactBptOut                                                          //
-        // (per token)                                                                     //
-        // aI = amountIn (vec)             /   bptOut   \                                  //
-        // b = balance (vec)     aI = b * | ------------ |                                 //
-        // bptOut = bptAmountOut           \  totalBPT  /                                  //
-        // bpt = totalBPT                                                                  //
+        //                              /   bptOut   \                                     //
+        // amountsIn[i] = balances[i] * | ------------ |                                   //
+        //                              \  totalBPT  /                                     //
         ************************************************************************************/
-
+        // We adjust the order of operations to minimize error amplification, assuming that
+        // balances[i], totalBPT > 1 (which is usually the case).
         // Tokens in, so we round up overall.
-        uint256 bptRatio = bptAmountOut.divUp(totalBPT);
 
-        uint256[] memory amountsIn = new uint256[](balances.length);
+        amountsIn = new uint256[](balances.length);
         for (uint256 i = 0; i < balances.length; i++) {
-            amountsIn[i] = balances[i].mulUp(bptRatio);
+            amountsIn[i] = balances[i].mulUp(bptOut).divUp(totalBPT);
         }
 
         return amountsIn;
@@ -62,26 +59,24 @@ library GyroPoolMath {
     // Note: this function is identical to that in WeightedMath.sol audited by Balancer
     function _calcTokensOutGivenExactBptIn(
         uint256[] memory balances,
-        uint256 bptAmountIn,
+        uint256 bptIn,
         uint256 totalBPT
-    ) internal pure returns (uint256[] memory) {
+    ) internal pure returns (uint256[] memory amountsOut) {
         /**********************************************************************************************
         // exactBPTInForTokensOut                                                                    //
         // (per token)                                                                               //
-        // aO = amountOut                  /        bptIn         \                                  //
-        // b = balance           a0 = b * | ---------------------  |                                 //
-        // bptIn = bptAmountIn             \       totalBPT       /                                  //
-        // bpt = totalBPT                                                                            //
+        //                                /        bptIn         \                                   //
+        // amountsOut[i] = balances[i] * | ---------------------  |                                  //
+        //                                \       totalBPT       /                                   //
         **********************************************************************************************/
-
+        // We adjust the order of operations to minimize error amplification, assuming that
+        // balances[i], totalBPT > 1 (which is usually the case).
         // Since we're computing an amount out, we round down overall. This means rounding down on both the
         // multiplication and division.
 
-        uint256 bptRatio = bptAmountIn.divDown(totalBPT);
-
-        uint256[] memory amountsOut = new uint256[](balances.length);
+        amountsOut = new uint256[](balances.length);
         for (uint256 i = 0; i < balances.length; i++) {
-            amountsOut[i] = balances[i].mulDown(bptRatio);
+            amountsOut[i] = balances[i].mulDown(bptIn).divDown(totalBPT);
         }
 
         return amountsOut;
@@ -112,6 +107,7 @@ library GyroPoolMath {
         if (currentInvariant <= previousInvariant) {
             // This shouldn't happen outside of rounding errors, but have this safeguard nonetheless to prevent the Pool
             // from entering a locked state in which joins and exits revert while computing accumulated swap fees.
+            // NB: This condition is also used by the pools to indicate that _lastInvariant is invalid and should be ignored.
             return (0, 0);
         }
 
@@ -141,13 +137,13 @@ library GyroPoolMath {
         uint256 guess = _makeInitialGuess(input);
 
         // 7 iterations
-        guess = (guess + ((input * FixedPoint.ONE) / guess)) / 2;
-        guess = (guess + ((input * FixedPoint.ONE) / guess)) / 2;
-        guess = (guess + ((input * FixedPoint.ONE) / guess)) / 2;
-        guess = (guess + ((input * FixedPoint.ONE) / guess)) / 2;
-        guess = (guess + ((input * FixedPoint.ONE) / guess)) / 2;
-        guess = (guess + ((input * FixedPoint.ONE) / guess)) / 2;
-        guess = (guess + ((input * FixedPoint.ONE) / guess)) / 2;
+        guess = (guess + ((input * GyroFixedPoint.ONE) / guess)) / 2;
+        guess = (guess + ((input * GyroFixedPoint.ONE) / guess)) / 2;
+        guess = (guess + ((input * GyroFixedPoint.ONE) / guess)) / 2;
+        guess = (guess + ((input * GyroFixedPoint.ONE) / guess)) / 2;
+        guess = (guess + ((input * GyroFixedPoint.ONE) / guess)) / 2;
+        guess = (guess + ((input * GyroFixedPoint.ONE) / guess)) / 2;
+        guess = (guess + ((input * GyroFixedPoint.ONE) / guess)) / 2;
 
         // Check in some epsilon range
         // Check square is more or less correct
@@ -176,58 +172,58 @@ library GyroPoolMath {
     // }
 
     function _makeInitialGuess(uint256 input) internal pure returns (uint256) {
-        if (input >= FixedPoint.ONE) {
-            return (1 << (_intLog2Halved(input / FixedPoint.ONE))) * FixedPoint.ONE;
+        if (input >= GyroFixedPoint.ONE) {
+            return (1 << (_intLog2Halved(input / GyroFixedPoint.ONE))) * GyroFixedPoint.ONE;
         } else {
-            if (input < 10) {
+            if (input <= 10) {
                 return SQRT_1E_NEG_17;
             }
-            if (input < 1e2) {
+            if (input <= 1e2) {
                 return 1e10;
             }
-            if (input < 1e3) {
+            if (input <= 1e3) {
                 return SQRT_1E_NEG_15;
             }
-            if (input < 1e4) {
+            if (input <= 1e4) {
                 return 1e11;
             }
-            if (input < 1e5) {
+            if (input <= 1e5) {
                 return SQRT_1E_NEG_13;
             }
-            if (input < 1e6) {
+            if (input <= 1e6) {
                 return 1e12;
             }
-            if (input < 1e7) {
+            if (input <= 1e7) {
                 return SQRT_1E_NEG_11;
             }
-            if (input < 1e8) {
+            if (input <= 1e8) {
                 return 1e13;
             }
-            if (input < 1e9) {
+            if (input <= 1e9) {
                 return SQRT_1E_NEG_9;
             }
-            if (input < 1e10) {
+            if (input <= 1e10) {
                 return 1e14;
             }
-            if (input < 1e11) {
+            if (input <= 1e11) {
                 return SQRT_1E_NEG_7;
             }
-            if (input < 1e12) {
+            if (input <= 1e12) {
                 return 1e15;
             }
-            if (input < 1e13) {
+            if (input <= 1e13) {
                 return SQRT_1E_NEG_5;
             }
-            if (input < 1e14) {
+            if (input <= 1e14) {
                 return 1e16;
             }
-            if (input < 1e15) {
+            if (input <= 1e15) {
                 return SQRT_1E_NEG_3;
             }
-            if (input < 1e16) {
+            if (input <= 1e16) {
                 return 1e17;
             }
-            if (input < 1e17) {
+            if (input <= 1e17) {
                 return SQRT_1E_NEG_1;
             }
             return input;
@@ -267,7 +263,7 @@ library GyroPoolMath {
 
     /** @dev If liquidity update is proportional so that price stays the same ("balanced liquidity update"), then this
      *  returns the invariant after that change. This is more efficient than calling `calculateInvariant()` on the updated balances.
-     *  `isIncreaseLiq` denotes the sign of the update. See the writeup, Corollary 3 in Section 2.1.5. */
+     *  `isIncreaseLiq` denotes the sign of the update. See the writeup, Corollary 3 in Section 3.1.3. */
     function liquidityInvariantUpdate(
         uint256 uinvariant,
         uint256 changeBptSupply,
@@ -289,7 +285,7 @@ library GyroPoolMath {
     /** @dev If `deltaBalances` are such that, when changing `balances` by it, the price stays the same ("balanced
      * liquidity update"), then this returns the invariant after that change. This is more efficient than calling
      * `calculateInvariant()` on the updated balances. `isIncreaseLiq` denotes the sign of the update.
-     * See the writeup, Corollary 3 in Section 2.1.5.
+     * See the writeup, Corollary 3 in Section 3.1.3.
      *
      * DEPRECATED and will go out of use and be removed once pending changes to the CEMM are merged. Use the other liquidityInvariantUpdate() function instead!
      */

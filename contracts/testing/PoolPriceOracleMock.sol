@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-pragma solidity ^0.7.0;
+pragma solidity 0.7.6;
 pragma experimental ABIEncoderV2;
 
 import "@balancer-labs/v2-solidity-utils/contracts/helpers/BalancerErrors.sol";
@@ -111,12 +111,7 @@ abstract contract PoolPriceOracleMock is IPoolPriceOracle, IPriceOracle {
         return getInstantValue(variable, _getOracleIndex());
     }
 
-    function getTimeWeightedAverage(OracleAverageQuery[] memory queries)
-        external
-        view
-        override
-        returns (uint256[] memory results)
-    {
+    function getTimeWeightedAverage(OracleAverageQuery[] memory queries) external view override returns (uint256[] memory results) {
         results = new uint256[](queries.length);
         uint256 latestIndex = _getOracleIndex();
 
@@ -125,12 +120,7 @@ abstract contract PoolPriceOracleMock is IPoolPriceOracle, IPriceOracle {
         }
     }
 
-    function getPastAccumulators(OracleAccumulatorQuery[] memory queries)
-        external
-        view
-        override
-        returns (int256[] memory results)
-    {
+    function getPastAccumulators(OracleAccumulatorQuery[] memory queries) external view override returns (int256[] memory results) {
         results = new int256[](queries.length);
         uint256 latestIndex = _getOracleIndex();
 
@@ -160,12 +150,7 @@ abstract contract PoolPriceOracleMock is IPoolPriceOracle, IPriceOracle {
         int256 logInvariant
     ) internal returns (uint256) {
         // Read latest sample, and compute the next one by updating it with the newly received data.
-        bytes32 sample = _getSample(latestIndex).update(
-            logPairPrice,
-            logBptPrice,
-            logInvariant,
-            block.timestamp
-        );
+        bytes32 sample = _getSample(latestIndex).update(logPairPrice, logBptPrice, logInvariant, block.timestamp);
 
         // We create a new sample if more than _MAX_SAMPLE_DURATION seconds have elapsed since the creation of the
         // latest one. In other words, no sample accumulates data over a period larger than _MAX_SAMPLE_DURATION.
@@ -225,14 +210,9 @@ abstract contract PoolPriceOracleMock is IPoolPriceOracle, IPriceOracle {
     ) internal pure returns (uint256) {
         _require(query.secs != 0, Errors.ORACLE_BAD_SECS);
 
-        int256 beginAccumulator = getPastAccumulator(
-            query.variable,
-            latestIndex,
-            query.ago + query.secs
-        );
+        int256 beginAccumulator = getPastAccumulator(query.variable, latestIndex, query.ago + query.secs);
         int256 endAccumulator = getPastAccumulator(query.variable, latestIndex, query.ago);
-        return
-            LogCompression.fromLowResLog((endAccumulator - beginAccumulator) / int256(query.secs));
+        return LogCompression.fromLowResLog((endAccumulator - beginAccumulator) / int256(query.secs));
     }
 
     /**

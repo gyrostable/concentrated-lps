@@ -2,20 +2,16 @@ import decimal
 import operator
 
 import hypothesis.strategies as st
-from hypothesis import example, settings
+from hypothesis import example, settings, assume
 from brownie.test import given
 
 from tests.support.quantized_decimal import QuantizedDecimal as D
-from tests.support.utils import scale, qdecimals
-from math import floor, log2
+from tests.support.utils import scale, qdecimals, unscale
+from math import floor, log2, log10, ceil
 
 operators = ["add", "sub", "mul", "truediv"]
 
 MAX_UINT = 2**256 - 1
-
-
-def unscale(x, decimals=18):
-    return x / 10**decimals
 
 
 @given(
@@ -45,11 +41,12 @@ def test_decimal_behavior(math_testing, a, b, ops):
         a, b = b, op(a, b)
         assert scale(b) == solidity_b
 
+
 @settings(max_examples=1_000)
 @given(a=qdecimals(0))
 @example(a=D(1))
 @example(a=D(0))
-@example(a=D('1E-18'))
+@example(a=D("1E-18"))
 def test_sqrt(math_testing, a):
     # Note that errors are relatively large, with, e.g., 5 decimals for sqrt(1)
     res_math = a.sqrt()
@@ -69,11 +66,19 @@ def test_sqrtNewton(math_testing, a):
 
 @given(a=qdecimals(0).filter(lambda a: a > 0))
 @example(a=D(1))
+@example(a=D("1E-17"))
+@example(a=D("1E-18"))
 def test_sqrtNewtonInitialGuess(math_testing, a):
-
+    result_sol = unscale(math_testing.sqrtNewtonInitialGuess(scale(a)))
     if a >= 1:
-        assert 2 ** (floor(log2(a) / 2)) == unscale(
-            math_testing.sqrtNewtonInitialGuess(scale(a))
-        )
-    else:
-        assert 1 == unscale(math_testing.sqrtNewtonInitialGuess(scale(a)))
+        assert result_sol == 2 ** (floor(log2(a) / 2))
+    elif a == D("1E-18"):
+        # Special case where it's not worth introducing another case in the solidity code.
+        # The rule below would yield 1E-9, i.e., the exact result, but our code includes this
+        # in the next higher case.
+        assert result_sol == D("1E-17").sqrt()
+    elif a <= 0.1:
+        a_oom = D(10) ** ceil(log10(a))
+        assert result_sol == a_oom.sqrt()
+    else:  # a in (0.1, 1)
+        assert result_sol == a

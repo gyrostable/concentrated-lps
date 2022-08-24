@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-pragma solidity ^0.7.0;
+pragma solidity 0.7.6;
 
 import "@balancer-labs/v2-solidity-utils/contracts/helpers/WordCodec.sol";
 
@@ -78,16 +78,7 @@ library Samples {
         int256 accLogBptPrice = _accLogBptPrice(sample) + instLogBptPrice * elapsed;
         int256 accLogInvariant = _accLogInvariant(sample) + instLogInvariant * elapsed;
 
-        return
-            pack(
-                instLogPairPrice,
-                accLogPairPrice,
-                instLogBptPrice,
-                accLogBptPrice,
-                instLogInvariant,
-                accLogInvariant,
-                currentTimestamp
-            );
+        return pack(instLogPairPrice, accLogPairPrice, instLogBptPrice, accLogBptPrice, instLogInvariant, accLogInvariant, currentTimestamp);
     }
 
     /**

@@ -40,7 +40,7 @@ def gen_params_liquidityUpdate(draw):
 #######################################
 @given(
     params=gen_params_liquidityUpdate(),
-    invariant=st.decimals(min_value="100", max_value="1000000000000000000", places=4),
+    invariant=st.decimals(min_value="100", max_value="1000000000000000000"),
 )
 def test_liquidity_invariant_update_deltaBptTokens(
     gyro_two_math_testing, params, invariant
@@ -61,9 +61,9 @@ def test_liquidity_invariant_update_deltaBptTokens(
 # @given(
 #     balances=st.tuples(billion_balance_strategy, billion_balance_strategy),
 #     last_invariant=st.decimals(
-#         min_value="100", max_value="1000000000000000000", places=4
+#         min_value="100", max_value="1000000000000000000"
 #     ),
-#     delta_bal_scaling=st.decimals(min_value="0", max_value="10", places=4),
+#     delta_bal_scaling=st.decimals(min_value="0", max_value="10"),
 # )
 # def test_liquidity_invariant_update_add(
 #     gyro_two_math_testing,
@@ -96,9 +96,9 @@ def test_liquidity_invariant_update_deltaBptTokens(
 # @given(
 #     balances=st.tuples(billion_balance_strategy, billion_balance_strategy),
 #     last_invariant=st.decimals(
-#         min_value="100", max_value="1000000000000000000", places=4
+#         min_value="100", max_value="1000000000000000000"
 #     ),
-#     delta_bal_scaling=st.decimals(min_value="0", max_value="0.99", places=4),
+#     delta_bal_scaling=st.decimals(min_value="0", max_value="0.99"),
 # )
 # def test_liquidity_invariant_update_remove(
 #     gyro_two_math_testing,
@@ -130,8 +130,8 @@ def test_liquidity_invariant_update_deltaBptTokens(
 #######################################
 @given(
     balances=st.tuples(billion_balance_strategy, billion_balance_strategy),
-    bpt_amount_out=st.decimals(min_value="1", max_value="1000000", places=4),
-    total_bpt=st.decimals(min_value="1", max_value="100000000000", places=4),
+    bpt_amount_out=st.decimals(min_value="1", max_value="1000000"),
+    total_bpt=st.decimals(min_value="1", max_value="100000000000"),
 )
 def test_all_tokens_in_given_exact_bpt_out(
     gyro_two_math_testing, balances: Tuple[int, int], bpt_amount_out, total_bpt
@@ -154,8 +154,8 @@ def test_all_tokens_in_given_exact_bpt_out(
 #######################################
 @given(
     balances=st.tuples(billion_balance_strategy, billion_balance_strategy),
-    bpt_amount_in=st.decimals(min_value="1", max_value="1000000", places=4),
-    total_bpt=st.decimals(min_value="1", max_value="100000000000", places=4),
+    bpt_amount_in=st.decimals(min_value="1", max_value="1000000"),
+    total_bpt=st.decimals(min_value="1", max_value="100000000000"),
 )
 def test_tokens_out_given_exact_bpt_in(
     gyro_two_math_testing, balances: Tuple[int, int], bpt_amount_in, total_bpt
@@ -177,17 +177,11 @@ def test_tokens_out_given_exact_bpt_in(
 
 #######################################
 @given(
-    old_invariant=st.decimals(
-        min_value="100", max_value="1000000000000000000", places=4
-    ),
-    new_invariant=st.decimals(
-        min_value="100", max_value="1000000000000000000", places=4
-    ),
-    current_bpt_supply=st.decimals(min_value="1", max_value="1000000", places=4),
-    protocol_fee_gyro_portion=st.decimals(min_value="0.00", max_value="0.5", places=4),
-    protocol_swap_fee_percentage=st.decimals(
-        min_value="0.0", max_value="0.4", places=4
-    ),
+    old_invariant=st.decimals(min_value="100", max_value="1000000000000000000"),
+    new_invariant=st.decimals(min_value="100", max_value="1000000000000000000"),
+    current_bpt_supply=st.decimals(min_value="1", max_value="1000000"),
+    protocol_fee_gyro_portion=st.decimals(min_value="0.00", max_value="0.5"),
+    protocol_swap_fee_percentage=st.decimals(min_value="0.0", max_value="0.4"),
 )
 def test_protocol_fees(
     gyro_two_math_testing,
@@ -224,9 +218,9 @@ def test_protocol_fees(
 #         billion_balance_strategy, billion_balance_strategy, billion_balance_strategy
 #     ),
 #     last_invariant=st.decimals(
-#         min_value="100", max_value="1000000000000000000", places=4
+#         min_value="100", max_value="1000000000000000000"
 #     ),
-#     delta_bal_scaling=st.decimals(min_value="0", max_value="10", places=4),
+#     delta_bal_scaling=st.decimals(min_value="0", max_value="10"),
 # )
 # def test_liquidity_invariant_update_add_3(
 #     gyro_three_math_testing,
@@ -261,9 +255,9 @@ def test_protocol_fees(
 #         billion_balance_strategy, billion_balance_strategy, billion_balance_strategy
 #     ),
 #     last_invariant=st.decimals(
-#         min_value="100", max_value="1000000000000000000", places=4
+#         min_value="100", max_value="1000000000000000000"
 #     ),
-#     delta_bal_scaling=st.decimals(min_value="0", max_value="0.99", places=4),
+#     delta_bal_scaling=st.decimals(min_value="0", max_value="0.99"),
 # )
 # def test_liquidity_invariant_update_remove_3(
 #     gyro_three_math_testing,
@@ -297,8 +291,8 @@ def test_protocol_fees(
     balances=st.tuples(
         billion_balance_strategy, billion_balance_strategy, billion_balance_strategy
     ),
-    bpt_amount_out=st.decimals(min_value="1", max_value="1000000", places=4),
-    total_bpt=st.decimals(min_value="1", max_value="100000000000", places=4),
+    bpt_amount_out=st.decimals(min_value="1", max_value="1000000"),
+    total_bpt=st.decimals(min_value="1", max_value="100000000000"),
 )
 def test_all_tokens_in_given_exact_bpt_out_3(
     gyro_three_math_testing, balances: Tuple[int, int, int], bpt_amount_out, total_bpt
@@ -324,8 +318,8 @@ def test_all_tokens_in_given_exact_bpt_out_3(
     balances=st.tuples(
         billion_balance_strategy, billion_balance_strategy, billion_balance_strategy
     ),
-    bpt_amount_in=st.decimals(min_value="1", max_value="1000000", places=4),
-    total_bpt=st.decimals(min_value="1", max_value="1000000", places=4),
+    bpt_amount_in=st.decimals(min_value="1", max_value="1000000"),
+    total_bpt=st.decimals(min_value="1", max_value="1000000"),
 )
 def test_tokens_out_given_exact_bpt_in_3(
     gyro_three_math_testing, balances: Tuple[int, int, int], bpt_amount_in, total_bpt

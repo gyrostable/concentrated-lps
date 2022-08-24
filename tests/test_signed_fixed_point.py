@@ -50,3 +50,61 @@ def test_decimal_behavior(signed_math_testing, a, b, op_name):
     solidity_c = getattr(signed_math_testing, op_name)(scale(a), scale(b))
     note(f"solidity: {solidity_c}")
     assert c.raw * 10**18 == solidity_c
+
+
+### Test Rounding ###
+
+one = 10**18
+
+
+def test_signed_rounding_div_exact(signed_math_testing):
+    # Regression for issue #59
+    assert signed_math_testing.divUp(1, 1) == one
+    assert signed_math_testing.divUp(-1, -1) == one
+    assert signed_math_testing.divUp(1, -1) == -one
+    assert signed_math_testing.divUp(-1, 1) == -one
+
+    assert signed_math_testing.divDown(1, 1) == one
+    assert signed_math_testing.divDown(-1, -1) == one
+    assert signed_math_testing.divDown(1, -1) == -one
+    assert signed_math_testing.divDown(-1, 1) == -one
+
+
+def test_signed_rounding_div(signed_math_testing, math_testing):
+    assert signed_math_testing.divUp(1, 1) == one
+    assert signed_math_testing.divUp(-1, -1) == one
+    assert signed_math_testing.divUp(1, -1) == -one
+    assert signed_math_testing.divUp(-1, 1) == -one
+
+    assert signed_math_testing.divDown(1, 1) == one
+    assert signed_math_testing.divDown(-1, -1) == one
+    assert signed_math_testing.divDown(1, -1) == -one
+    assert signed_math_testing.divDown(-1, 1) == -one
+
+    # Calculation corresponds to ±1e-18 / (±(1 + 1e-18)), which is just below accuracy.
+    a = 1
+    b = one + 1
+    assert signed_math_testing.divUp(a, b) == 1
+    assert signed_math_testing.divUp(-a, -b) == 1
+    assert signed_math_testing.divUp(a, -b) == -1
+    assert signed_math_testing.divUp(-a, b) == -1
+    assert signed_math_testing.divDown(a, b) == 0
+    assert signed_math_testing.divDown(-a, -b) == 0
+    assert signed_math_testing.divDown(a, -b) == 0
+    assert signed_math_testing.divDown(-a, b) == 0
+
+    # Some test for numbers ≠ 1
+    assert signed_math_testing.divUp(one, 3 * one) == 333333333333333334
+    assert signed_math_testing.divDown(one, 3 * one) == 333333333333333333
+
+
+def test_signed_rounding_mul(signed_math_testing):
+    assert signed_math_testing.mulUp(1, 1) == 1
+    assert signed_math_testing.mulUp(-1, -1) == 1
+    assert signed_math_testing.mulUp(1, -1) == -1
+    assert signed_math_testing.mulUp(-1, 1) == -1
+
+    assert signed_math_testing.mulDown(1, 1) == 0
+    assert signed_math_testing.mulDown(-1, -1) == 0
+    assert signed_math_testing.mulDown(1, -1) == 0
+    assert signed_math_testing.mulDown(-1, 1) == 0
