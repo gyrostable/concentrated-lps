@@ -3,6 +3,9 @@
 #
 # This is different from Decimal in that (say) if DECIMAL_PRECISION=3, then QuantizedDecimal('0.0005') == 0. This is
 # the behavior we'd expect from a fixed-point implementation.
+#
+# THIS VARIANT of the code is set up for very high precision (300 places overall with 100 decimals).
+# See MAX_PREC_VALUE and the call to set_decimals().
 
 from __future__ import annotations
 
@@ -13,8 +16,8 @@ from typing import Any, Optional, Union
 
 import pytest
 
-# v Total number of decimal places. This matches uint256, to the degree possible (max uint256 ≈ 1.16e+77).
-MAX_PREC_VALUE = 78
+# v Total number of decimal places.
+MAX_PREC_VALUE = 300
 
 # Workaround a brownie issue:
 # - In Brownie, prec is already set to 78 and you can't set it. (through vyper for some reason)
@@ -26,12 +29,12 @@ decimal.getcontext().prec = MAX_PREC_VALUE
 def set_decimals(ndecimals: int):
     global DECIMAL_PRECISION, DECIMAL_MULT, QUANTIZED_EXP
     DECIMAL_PRECISION = ndecimals
-    QUANTIZED_EXP = decimal.Decimal(1) / decimal.Decimal(10**DECIMAL_PRECISION)
+    QUANTIZED_EXP = decimal.Decimal(1) / decimal.Decimal(10 ** DECIMAL_PRECISION)
     # 1.000000... multiplier to increase the precision to the required level by multiplying
-    DECIMAL_MULT = QUANTIZED_EXP * decimal.Decimal(10**DECIMAL_PRECISION)
+    DECIMAL_MULT = QUANTIZED_EXP * decimal.Decimal(10 ** DECIMAL_PRECISION)
 
 
-set_decimals(18)
+set_decimals(100)
 
 
 @total_ordering
@@ -120,33 +123,12 @@ class QuantizedDecimal:
             )
         return self.quantize_to_lower_precision() != other
 
-    # Comparison operators are such that we can write a >= b.approxed(). Note that this relationship is not transitive,
-    # as is '=='.
-    # a > b.approxed() means (not a <= b.approxed()), i.e., a is significantly greater than b.
-
-    def __le__(self, other: DecimalLike):
+    def __lt__(self, other: DecimalLike):
         if isinstance(other, QuantizedDecimal):
             return (
-                self.quantize_to_lower_precision() <= other.quantize_to_lower_precision()
+                self.quantize_to_lower_precision() < other.quantize_to_lower_precision()
             )
-        if isinstance(other, ApproxDecimal):
-            return self < other.expected or self == other
-        return self <= QuantizedDecimal(other)
-
-    def __ge__(self, other: DecimalLike):
-        if isinstance(other, QuantizedDecimal):
-            return (
-                self.quantize_to_lower_precision() >= other.quantize_to_lower_precision()
-            )
-        if isinstance(other, ApproxDecimal):
-            return self > other.expected or self == other
-        return self >= QuantizedDecimal(other)
-
-    def __lt__(self, other):
-        return not self >= other
-
-    def __gt__(self, other):
-        return not self <= other
+        return self < QuantizedDecimal(other)
 
     def __hash__(self):
         return hash(self._value)
@@ -183,14 +165,6 @@ class QuantizedDecimal:
         context.rounding = decimal.ROUND_UP
         return QuantizedDecimal(self._value / self._get_value(other), context=context)
 
-    # mul_down and div_down are the defaults but we put them here for consistency so that one can quickly swap out one for the other.
-
-    def mul_down(self, other: DecimalLike):
-        return self * other
-
-    def div_down(self, other: DecimalLike):
-        return self / other
-
     @classmethod
     def from_float(cls, value: float) -> QuantizedDecimal:
         return cls(value)
@@ -220,7 +194,6 @@ class QuantizedDecimal:
         return pytest.approx(self.raw, **kwargs)
 
 
-# The following is LEGACY code. In new code just write a >= b.approxed()
 # Sry monkey patching...
 from _pytest.python_api import ApproxDecimal
 

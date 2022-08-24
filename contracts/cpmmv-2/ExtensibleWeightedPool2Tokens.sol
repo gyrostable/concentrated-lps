@@ -60,12 +60,12 @@ abstract contract ExtensibleWeightedPool2Tokens is
     IERC20 internal immutable _token0;
     IERC20 internal immutable _token1;
 
-    uint256 private immutable _normalizedWeight0;
-    uint256 private immutable _normalizedWeight1;
+    uint256 private immutable _normalizedWeight0 = 5e17;
+    uint256 private immutable _normalizedWeight1 = 5e17;
 
     // The protocol fees will always be charged using the token associated with the max weight in the pool.
     // Since these Pools will register tokens only once, we can assume this index will be constant.
-    uint256 internal immutable _maxWeightTokenIndex;
+    uint256 internal immutable _maxWeightTokenIndex = 0;
 
     // All token balances are normalized to behave as if the token had 18 decimals. We assume a token's decimals will
     // not change throughout its lifetime, and store the corresponding scaling factor for each at construction time.
@@ -88,8 +88,6 @@ abstract contract ExtensibleWeightedPool2Tokens is
         string symbol;
         IERC20 token0;
         IERC20 token1;
-        uint256 normalizedWeight0;
-        uint256 normalizedWeight1;
         uint256 swapFeePercentage;
         uint256 pauseWindowDuration;
         uint256 bufferPeriodDuration;
@@ -127,18 +125,6 @@ abstract contract ExtensibleWeightedPool2Tokens is
 
         _scalingFactor0 = _computeScalingFactor(params.token0);
         _scalingFactor1 = _computeScalingFactor(params.token1);
-
-        // Ensure each normalized weight is above them minimum and find the token index of the maximum weight
-        _require(params.normalizedWeight0 >= WeightedMath._MIN_WEIGHT, Errors.MIN_WEIGHT);
-        _require(params.normalizedWeight1 >= WeightedMath._MIN_WEIGHT, Errors.MIN_WEIGHT);
-
-        // Ensure that the normalized weights sum to ONE
-        uint256 normalizedSum = params.normalizedWeight0.add(params.normalizedWeight1);
-        _require(normalizedSum == FixedPoint.ONE, Errors.NORMALIZED_WEIGHT_INVARIANT);
-
-        _normalizedWeight0 = params.normalizedWeight0;
-        _normalizedWeight1 = params.normalizedWeight1;
-        _maxWeightTokenIndex = params.normalizedWeight0 >= params.normalizedWeight1 ? 0 : 1;
     }
 
     // Getters / Setters

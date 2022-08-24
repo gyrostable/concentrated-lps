@@ -1,4 +1,4 @@
-from typing import NamedTuple
+from typing import NamedTuple, Tuple
 
 from tests.support.quantized_decimal import DecimalLike
 
@@ -15,7 +15,7 @@ class CallJoinPoolGyroParams(NamedTuple):
     poolId: bytes
     sender: address
     recipient: address
-    currentBalances: int
+    currentBalances: Tuple[int, ...]
     lastChangeBlock: int
     protocolSwapFeePercentage: int
     amountIn: int
@@ -40,19 +40,43 @@ class TwoPoolBaseParams(NamedTuple):
     symbol: str
     token0: str
     token1: str
-    normalizedWeight0: DecimalLike
-    normalizedWeight1: DecimalLike
     swapFeePercentage: DecimalLike
     pauseWindowDuration: DecimalLike
     bufferPeriodDuration: DecimalLike
     oracleEnabled: bool
     owner: str
 
+class TwoPoolFactoryCreateParams(NamedTuple):
+    name: str
+    symbol: str
+    tokens: list[str]
+    sqrts: list[DecimalLike]
+    swapFeePercentage: DecimalLike
+    oracleEnabled: bool
+    owner: address
 
 class TwoPoolParams(NamedTuple):
     baseParams: TwoPoolBaseParams
     sqrtAlpha: DecimalLike  # should already be upscaled
     sqrtBeta: DecimalLike  # Should already be upscaled
+
+
+class ThreePoolParams(NamedTuple):
+    vault: str
+    name: str
+    symbol: str
+    tokens: list[str]
+    root3Alpha: DecimalLike
+    swapFeePercentage: DecimalLike
+    pauseWindowDuration: DecimalLike
+    bufferPeriodDuration: DecimalLike
+    owner: str
+    # configAddress listed separately
+
+
+class Vector2(NamedTuple):
+    x: DecimalLike
+    y: DecimalLike
 
 
 class CEMMMathParams(NamedTuple):
@@ -63,17 +87,35 @@ class CEMMMathParams(NamedTuple):
     l: DecimalLike
 
 
-class Vector2(NamedTuple):
-    x: DecimalLike
-    y: DecimalLike
+class CEMMMathQParams(NamedTuple):
+    a: DecimalLike
+    b: DecimalLike
+    c: DecimalLike
 
 
 class CEMMMathDerivedParams(NamedTuple):
     tauAlpha: Vector2
     tauBeta: Vector2
+    u: DecimalLike
+    v: DecimalLike
+    w: DecimalLike
+    z: DecimalLike
+    dSq: DecimalLike
 
 
-class CEMMMathQParams(NamedTuple):
-    a: DecimalLike
-    b: DecimalLike
-    c: DecimalLike
+class ThreePoolFactoryCreateParams(NamedTuple):
+    name: str
+    symbol: str
+    tokens: list[str]
+    root3Alpha: DecimalLike
+    swapFeePercentage: DecimalLike
+    owner: address
+# Legacy Aliases
+GyroCEMMMathParams = CEMMMathParams
+GyroCEMMMathDerivedParams = CEMMMathDerivedParams
+
+
+class CEMMPoolParams(NamedTuple):
+    baseParams: TwoPoolBaseParams
+    cemmParams: GyroCEMMMathParams
+    derivedCEMMParams: GyroCEMMMathDerivedParams

@@ -1,8 +1,10 @@
 import pytest
 from brownie import ZERO_ADDRESS
+from tests.support.quantized_decimal import QuantizedDecimal as D
 from tests.conftest import TOKENS_PER_USER
 from tests.cpmmv2 import constants
 from tests.support.types import CallJoinPoolGyroParams, SwapKind, SwapRequest
+from tests.support.utils import unscale, approxed
 
 
 def test_empty_erc20s(admin, gyro_erc20_empty):
@@ -33,10 +35,18 @@ def test_pool_reg(balancer_vault, balancer_vault_pool, gyro_erc20_funded):
         assert token_addresses[token] == gyro_erc20_funded[token].address
         assert token_balances[token] == 0
 
+def test_pool_factory(mock_pool_from_factory):
+    assert mock_pool_from_factory.name() == "GyroTwoPoolFromFactory"
+    assert mock_pool_from_factory.symbol() == "G2PF"
+    assert mock_pool_from_factory.getSwapFeePercentage() == D(1) * 10 ** 15
+
+    sqrtParams = mock_pool_from_factory.getSqrtParameters()
+    assert sqrtParams[0] == 0.97 * 10 ** 18
+    assert sqrtParams[1] == 1.02 * 10 ** 18
 
 def test_pool_constructor(mock_vault_pool):
     assert mock_vault_pool.getSwapFeePercentage() == 1 * 10 ** 15
-    assert mock_vault_pool.getNormalizedWeights() == (0.6 * 10 ** 18, 0.4 * 10 ** 18)
+    assert mock_vault_pool.getNormalizedWeights() == (0.5 * 10 ** 18, 0.5 * 10 ** 18)
 
     sqrtParams = mock_vault_pool.getSqrtParameters()
     assert sqrtParams[0] == 0.97 * 10 ** 18
@@ -111,6 +121,8 @@ def test_pool_on_join(users, mock_vault_pool, mock_vault):
     sqrtBeta = sqrtParams[1] / (10 ** 18)
 
     # Check pool's invariant after initialization
+    # NOTE: Calculation is completely unscaled; this is not the math that is actually done by anyone, but it works as a
+    # check.
     currentInvariant = mock_vault_pool.getLastInvariant()
     squareInvariant = (amount_in + currentInvariant / sqrtBeta) * (
         amount_in + currentInvariant * sqrtAlpha
@@ -195,8 +207,7 @@ def test_exit_pool(users, mock_vault_pool, mock_vault):
         mock_vault_pool.balanceOf(users[0]) * amountOut // amount_in,
     )
 
-    deltas = tuple(int(v) for v in tx.events["PoolBalanceChanged"]["deltas"])
-    assert deltas == pytest.approx((amountOut, amountOut))
+    assert unscale(tx.events["PoolBalanceChanged"]["deltas"]) == approxed(unscale((amountOut, amountOut)))
 
     (_, balancesAfterExit) = mock_vault.getPoolTokens(poolId)
     assert int(balancesAfterExit[0]) == pytest.approx(
@@ -276,8 +287,7 @@ def test_swap(
         balances_after_exit[1],  # balanceOut,
         amountToSwapMinusFees,  # amountIn,
         virtual_param_in,  # virtualParamIn,
-        virtual_param_out,  # virtualParamOut,
-        current_invariant,  # currentInvariant
+        virtual_param_out,  # virtualParamOut
     )
 
     swapRequest = SwapRequest(

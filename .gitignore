@@ -7,3 +7,4 @@ dist/
 build/
 __pycache__
 /typechain/
+.hypothesis/

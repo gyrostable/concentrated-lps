@@ -1,2 +1,4 @@
 eth-brownie==1.17.2
 numpy
+pandas
+scipy

@@ -25,9 +25,7 @@ import "./GyroTwoPool.sol";
 contract GyroTwoPoolFactory is BasePoolSplitCodeFactory, FactoryWidePauseWindow {
     address public immutable gyroConfigAddress;
 
-    constructor(IVault vault, address _gyroConfigAddress)
-        BasePoolSplitCodeFactory(vault, type(GyroTwoPool).creationCode)
-    {
+    constructor(IVault vault, address _gyroConfigAddress) BasePoolSplitCodeFactory(vault, type(GyroTwoPool).creationCode) {
         gyroConfigAddress = _gyroConfigAddress;
     }
 
@@ -38,7 +36,6 @@ contract GyroTwoPoolFactory is BasePoolSplitCodeFactory, FactoryWidePauseWindow 
         string memory name,
         string memory symbol,
         IERC20[] memory tokens,
-        uint256[] memory weights,
         uint256[] memory sqrts,
         uint256 swapFeePercentage,
         bool oracleEnabled,
@@ -53,8 +50,6 @@ contract GyroTwoPoolFactory is BasePoolSplitCodeFactory, FactoryWidePauseWindow 
                 symbol: symbol,
                 token0: tokens[0],
                 token1: tokens[1],
-                normalizedWeight0: weights[0],
-                normalizedWeight1: weights[1],
                 swapFeePercentage: swapFeePercentage,
                 pauseWindowDuration: pauseWindowDuration,
                 bufferPeriodDuration: bufferPeriodDuration,
