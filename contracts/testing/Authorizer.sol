@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-Gyro-1.0
 // for information on licensing please see the README in the GitHub repository <https://github.com/gyrostable/core-protocol>.
 
-pragma solidity ^0.7.0;
+pragma solidity 0.7.6;
 
 import "@balancer-labs/v2-vault/contracts/interfaces/IAuthorizer.sol";
 import "@balancer-labs/v2-solidity-utils/contracts/openzeppelin/AccessControl.sol";

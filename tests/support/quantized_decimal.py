@@ -127,7 +127,8 @@ class QuantizedDecimal:
     def __le__(self, other: DecimalLike):
         if isinstance(other, QuantizedDecimal):
             return (
-                self.quantize_to_lower_precision() <= other.quantize_to_lower_precision()
+                self.quantize_to_lower_precision()
+                <= other.quantize_to_lower_precision()
             )
         if isinstance(other, ApproxDecimal):
             return self < other.expected or self == other
@@ -136,7 +137,8 @@ class QuantizedDecimal:
     def __ge__(self, other: DecimalLike):
         if isinstance(other, QuantizedDecimal):
             return (
-                self.quantize_to_lower_precision() >= other.quantize_to_lower_precision()
+                self.quantize_to_lower_precision()
+                >= other.quantize_to_lower_precision()
             )
         if isinstance(other, ApproxDecimal):
             return self > other.expected or self == other

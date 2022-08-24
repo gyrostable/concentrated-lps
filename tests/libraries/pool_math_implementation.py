@@ -41,16 +41,16 @@ def liquidityInvariantUpdate_deltaBptTokens(
 def calcAllTokensInGivenExactBptOut(
     balances: Iterable[D], bptAmountOut: D, totalBPT: D
 ) -> Iterable[D]:
-    bptRatio = bptAmountOut.div_up(totalBPT)
-    amounts_in = [D(b).mul_up(bptRatio) for b in balances]
+    # We DON'T pull out bptAmountOut/totalBPT to avoid error amplification
+    amounts_in = [D(b).mul_up(bptAmountOut).div_up(totalBPT) for b in balances]
     return tuple(amounts_in)
 
 
 def calcTokensOutGivenExactBptIn(
     balances: Iterable[D], bptAmountIn: D, totalBPT: D
 ) -> Iterable[D]:
-    bptRatio = bptAmountIn / totalBPT
-    amounts_out = [D(b) * bptRatio for b in balances]
+    # We DON'T pull out bptAmountOut/totalBPT to avoid error amplification
+    amounts_out = [D(b) * bptAmountIn / totalBPT for b in balances]
     return tuple(amounts_out)
 
 

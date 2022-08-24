@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-Gyro-1.0
 // for information on licensing please see the README in the GitHub repository <https://github.com/gyrostable/core-protocol>.
 
-pragma solidity ^0.7.0;
+pragma solidity 0.7.6;
 pragma experimental ABIEncoderV2;
 
 import "@balancer-labs/v2-solidity-utils/contracts/openzeppelin/IERC20.sol";
@@ -49,6 +49,32 @@ contract MockVault is IPoolSwapStructs {
             tokens[i] = pool.tokens[i];
             balances[i] = pool.balances[tokens[i]];
         }
+        /*
+        // DEBUG: Dummy values, no storage access
+        tokens = new IERC20[](3);
+        balances = new uint256[](3);
+        balances[0] = 100e18;
+        balances[1] = 100e18;
+        balances[2] = 100e18;
+        */
+    }
+
+    function getPoolTokenInfo(bytes32 poolId, IERC20 token)
+        external
+        view
+        returns (
+            uint256 cash,
+            uint256 managed,
+            uint256 lastChangeBlock,
+            address assetManager
+        )
+    {
+        Pool storage pool = pools[poolId];
+        cash = pool.balances[token];
+        // Dummy:
+        managed = 0;
+        lastChangeBlock = 0;
+        assetManager = address(0x0);
     }
 
     function registerPool(IVault.PoolSpecialization) external view returns (bytes32) {
@@ -102,13 +128,13 @@ contract MockVault is IPoolSwapStructs {
         uint256[] currentBalances;
         uint256 lastChangeBlock;
         uint256 protocolSwapFeePercentage;
-        uint256 amountIn;
+        uint256[] amountsIn;
         uint256 bptOut;
     }
 
     // Join pool.
     // NOTE:
-    // - CallJoinPoolGyroParams.amountIn is only used upon initialization.
+    // - CallJoinPoolGyroParams.amountsIn is only used upon initialization.
     // - CallJoinPoolGyroParams.bptOut is only used out of initialization.
     // This is an unfortunate accident and should in principle be refactored.
     function callJoinPoolGyro(CallJoinPoolGyroParams memory params)
@@ -116,9 +142,6 @@ contract MockVault is IPoolSwapStructs {
         returns (uint256[] memory amountsIn, uint256[] memory dueProtocolFeeAmounts)
     {
         //(, amountsIn, minBPTAmountOut) = abi.decode(self, (JoinKind, uint256[], uint256));
-
-        uint256[] memory amountsInStr = new uint256[](params.currentBalances.length);
-        for (uint256 i = 0; i < params.currentBalances.length; ++i) amountsInStr[i] = params.amountIn;
 
         WeightedPoolUserData.JoinKind kind;
         bytes memory userData;
@@ -128,7 +151,7 @@ contract MockVault is IPoolSwapStructs {
             for (uint256 i = 0; i < params.currentBalances.length; ++i) isEmptyPool = isEmptyPool && (params.currentBalances[i] == 0);
             if (isEmptyPool) {
                 kind = WeightedPoolUserData.JoinKind.INIT;
-                userData = abi.encode(kind, amountsInStr, 1e7); //min Bpt
+                userData = abi.encode(kind, params.amountsIn, 1e7); //min Bpt
             } else {
                 kind = WeightedPoolUserData.JoinKind.ALL_TOKENS_IN_FOR_EXACT_BPT_OUT;
                 userData = abi.encode(kind, params.bptOut); // bptOut
@@ -186,9 +209,9 @@ contract MockVault is IPoolSwapStructs {
             userData
         );
 
-        Pool storage pool = pools[poolId];
-        for (uint256 i = 0; i < pool.tokens.length; i++) {
-            pool.balances[pool.tokens[i]] -= amountsOut[i];
+        Pool storage _pool = pools[poolId];
+        for (uint256 i = 0; i < _pool.tokens.length; i++) {
+            _pool.balances[_pool.tokens[i]] -= amountsOut[i];
         }
 
         IERC20[] memory tokens = new IERC20[](currentBalances.length);
@@ -210,12 +233,50 @@ contract MockVault is IPoolSwapStructs {
         // bytes memory userData = abi.encode(kind,amountsOutStr,10 * 10 ** 25); //maxBPTAmountIn
         //request.userData  = userData;
 
+        // Dummy to ensure storage is warm. We can't just call getPoolTokens() b/c it's external.
+        // The following makes the two balances warm that the real vault will have warm.
+        {
+            Pool storage pool = pools[request.poolId];
+            uint256 dummy;
+            dummy = pool.balances[request.tokenIn] + pool.balances[request.tokenOut];
+            // no-op to prevent the optimizer from removing this code:
+            if (dummy == 0) return;
+        }
+        /*{
+            Pool storage pool = pools[request.poolId];
+            IERC20[] memory tokens = new IERC20[](pool.tokens.length);
+            uint256[] memory balances = new uint256[](pool.tokens.length);
+
+            for (uint256 i = 0; i < pool.tokens.length; i++) {
+                tokens[i] = pool.tokens[i];
+                balances[i] = pool.balances[tokens[i]];
+            }
+            // DEBUG noop
+            if(balances[0] == 0 && balances[1] == 0 && balances[2] == 0) {
+                return;
+            }
+        }
+        {
+            Pool storage pool = pools[request.poolId];
+            IERC20[] memory tokens = new IERC20[](pool.tokens.length);
+            uint256[] memory balances = new uint256[](pool.tokens.length);
+
+            for (uint256 i = 0; i < pool.tokens.length; i++) {
+                tokens[i] = pool.tokens[i];
+                balances[i] = pool.balances[tokens[i]];
+            }
+            // DEBUG noop
+            if(balances[0] == 0 && balances[1] == 0 && balances[2] == 0) {
+                return;
+            }
+        }*/
+
         uint256 amount = IMinimalSwapInfoPool(poolAddress).onSwap(request, balanceTokenIn, balanceTokenOut);
         emit Swap(request.poolId, request.tokenIn, request.tokenOut, amount);
 
-        Pool storage pool = pools[request.poolId];
-        pool.balances[request.tokenIn] += request.amount;
-        pool.balances[request.tokenOut] -= amount;
+        Pool storage _pool = pools[request.poolId];
+        _pool.balances[request.tokenIn] += request.amount;
+        _pool.balances[request.tokenOut] -= amount;
     }
 
     function getPoolId() external view returns (bytes32) {

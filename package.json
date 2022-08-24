@@ -79,6 +79,6 @@
     "symlink-artifacts": "ln -srfn artifacts/@balancer-labs/v2-pool-weighted node_modules/@balancer-labs/v2-pool-weighted/artifacts && ln -srfn artifacts/@balancer-labs/v2-pool-utils node_modules/@balancer-labs/v2-pool-utils/artifacts && ln -srfn artifacts/@balancer-labs/v2-standalone-utils node_modules/@balancer-labs/v2-standalone-utils/artifacts && ln -srfn artifacts/@balancer-labs/v2-vault node_modules/@balancer-labs/v2-vault/artifacts",
     "typechain": "npx typechain --target ethers-v5 'build/{contracts,interfaces}/*.json' --outDir typechain",
     "prettier": "prettier --write 'contracts/**/*.sol'",
-    "lint": "prettier --list-different 'contracts/**/*.sol' && black --check tests"
+    "lint": "prettier --list-different '{contracts,libraries,interfaces}/**/*.sol' && black --check tests scripts"
   }
 }
