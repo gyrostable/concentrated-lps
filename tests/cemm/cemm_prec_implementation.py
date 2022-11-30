@@ -93,16 +93,18 @@ def calcAtAChi(x: D, y: D, p: Params, d: DerivedParams) -> D:
         D2(D(p.l).raw),
         D2(d.dSq),
     )
-    termXp = (w / lam + z) / lam / dSq / dSq
+    dSq2 = dSq * dSq
+
+    termXp = (w / lam + z) / lam / dSq2
     termNp = D(x) * p.c - D(y) * p.s
     val = mulDownXpToNp(termNp, termXp)
 
     termNp = D(x) * p.l * p.s + D(y) * p.l * p.c
-    termXp = u / dSq / dSq
+    termXp = u / dSq2
     val += mulDownXpToNp(termNp, termXp)
 
     termNp = D(x) * p.s + D(y) * p.c
-    termXp = v / dSq / dSq
+    termXp = v / dSq2
     val += mulDownXpToNp(termNp, termXp)
     return val
 
@@ -138,16 +140,18 @@ def calcAChiAChiInXp(p: Params, d: DerivedParams) -> D2:
         D2(D(p.l).raw),
         D2(d.dSq),
     )
-    termXp = ((2 * u) * v) / dSq / dSq / dSq
+    dSq3 = dSq * dSq * dSq
+
+    termXp = ((2 * u) * v) / dSq3
     val = lam.mul_up(termXp)
 
-    termXp = (u + D2("1e-38")) * (u + D2("1e-38")) / dSq / dSq / dSq
+    termXp = (u + D2("1e-38")) * (u + D2("1e-38")) / dSq3
     val += termXp.mul_up(lam).mul_up(lam)
 
-    val += v * v / dSq / dSq / dSq
+    val += v * v / dSq3
 
     termXp = w.div_up(lam) + z
-    val += termXp * termXp / dSq / dSq / dSq
+    val += termXp * termXp / dSq3
     return val
 
 
@@ -166,7 +170,7 @@ def calcMinAtxAChiySqPlusAtxSq(x: D, y: D, p: Params, d: DerivedParams) -> D:
     termNp -= x * y * (2 * p.c) * p.s
 
     termXp = u * u + (2 * u) * v / lam + v * v / lam / lam
-    termXp = termXp / dSq / dSq / dSq / dSq
+    termXp = termXp / (dSq * dSq * dSq * dSq)
     val = mulDownXpToNp(-termNp, termXp)
 
     termXp = D2(1) / dSq
@@ -190,7 +194,7 @@ def calc2AtxAtyAChixAChiy(x: D, y: D, p: Params, d: DerivedParams) -> D:
     )
 
     termXp = z * u + (w * u + z * v) / lam + w * v / lam / lam
-    termXp = termXp / dSq / dSq / dSq / dSq
+    termXp = termXp / (dSq * dSq * dSq * dSq)
 
     return mulDownXpToNp(termNp, termXp)
 
@@ -210,7 +214,7 @@ def calcMinAtyAChixSqPlusAtySq(x: D, y: D, p: Params, d: DerivedParams) -> D:
     termNp += D(x).mul_up(y).mul_up(p.s * 2).mul_up(p.c)
 
     termXp = z * z + w * w / lam / lam + (2 * z) * w / lam
-    termXp = termXp / dSq / dSq / dSq / dSq
+    termXp = termXp / (dSq * dSq * dSq * dSq)
     val = mulDownXpToNp(-termNp, termXp)
 
     termXp = D2(1) / dSq
@@ -290,10 +294,12 @@ def calculateInvariant(balances: Iterable[D], p: Params, d: DerivedParams) -> D:
 def calcXpXpDivLambdaLambda(
     x: D, r: Iterable[D], lam: D, s: D, c: D, tauBeta: Iterable[D2], dSq: D2
 ) -> D:
-    val = D(r[0]).mul_up(r[0]).mul_up(c).mul_up(c)
-    val = mulUpXpToNp(val, tauBeta[0] * tauBeta[0] / dSq / dSq + D2("7e-38"))
+    dSq2 = dSq * dSq
 
-    termXp = tauBeta[0] * tauBeta[1] / dSq / dSq
+    val = D(r[0]).mul_up(r[0]).mul_up(c).mul_up(c)
+    val = mulUpXpToNp(val, tauBeta[0] * tauBeta[0] / dSq2 + D2("7e-38"))
+
+    termXp = tauBeta[0] * tauBeta[1] / dSq2
     if termXp > 0:
         q_a = D(r[0]).mul_up(r[0]).mul_up(2 * s).mul_up(c)
         q_a = mulUpXpToNp(q_a, termXp + D2("7e-38"))
@@ -310,7 +316,7 @@ def calcXpXpDivLambdaLambda(
         q_b = mulUpXpToNp(q_b, termXp)
     q_a = q_a + q_b
 
-    termXp = tauBeta[1] * tauBeta[1] / dSq / dSq + D2("7e-38")
+    termXp = tauBeta[1] * tauBeta[1] / dSq2 + D2("7e-38")
     q_b = D(r[0]).mul_up(r[0]).mul_up(s).mul_up(s)
     q_b = mulUpXpToNp(q_b, termXp)
 

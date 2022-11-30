@@ -51,7 +51,9 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
     }
 
     constructor(GyroParams memory params, address configAddress) ExtensibleWeightedPool2Tokens(params.baseParams) {
-        // GyroCEMMMath.validateParams(params.cemmParams);
+        GyroCEMMMath.validateParams(params.cemmParams);
+        GyroCEMMMath.validateDerivedParamsLimits(params.cemmParams, params.derivedCemmParams);
+
         (_paramsAlpha, _paramsBeta, _paramsC, _paramsS, _paramsLambda) = (
             params.cemmParams.alpha,
             params.cemmParams.beta,
@@ -60,7 +62,6 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
             params.cemmParams.lambda
         );
 
-        // GyroCEMMMath.validateDerivedParams(params.cemmParams, params.derivedCemmParams);
         (_tauAlphaX, _tauAlphaY, _tauBetaX, _tauBetaY, _u, _v, _w, _z, _dSq) = (
             params.derivedCemmParams.tauAlpha.x,
             params.derivedCemmParams.tauAlpha.y,
@@ -126,7 +127,8 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
         {
             (int256 currentInvariant, int256 invErr) = GyroCEMMMath.calculateInvariantWithError(balances, cemmParams, derivedCEMMParams);
             // invariant = overestimate in x-component, underestimate in y-component
-            invariant = GyroCEMMMath.Vector2(SignedFixedPoint.add(currentInvariant, 2 * invErr), currentInvariant);
+            // No overflow in `+` due to constraints to the different values enforced in GyroCEMMMath.
+            invariant = GyroCEMMMath.Vector2(currentInvariant + 2 * invErr, currentInvariant);
 
             // Update price oracle with the pre-swap balances. Vs other pools, we need to do this after invariant is calculated
             _updateOracle(request.lastChangeBlock, balances, currentInvariant.toUint256(), cemmParams, derivedCEMMParams);
@@ -372,11 +374,10 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
             // to avoid extra calculations and reduce the potential for errors.
             (bptAmountIn, amountsOut) = _doExit(balances, userData);
 
-            // We need to re-calculate the invariant with the updated balances from scratch in this case.
-            // TODO review if calculating the invariant is critical enough to just not do it, like in the 3-pool.
-            // (actually, should we always do it like that in any case? Any advantage to how we do it here?)
-            _mutateAmounts(balances, amountsOut, FixedPoint.sub);
-            _lastInvariant = GyroCEMMMath.calculateInvariant(balances, cemmParams, derivedCEMMParams);
+            // Invalidate _lastInvariant. We do not compute the invariant to make sure the pool is not locking
+            // up b/c numerical limits might be violated. Instead, we set the invariant such that any following
+            // (non-paused) join/exit will ignore and recompute it. (see GyroPoolMath._calcProtocolFees())
+            _lastInvariant = type(uint256).max;
         }
 
         // returns a new uint256[](2) b/c Balancer vault is expecting a fee array, but fees paid in BPT instead
@@ -527,11 +528,12 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
     }
 
     /**
-     * Note: This function is identical to that used in GyroTwoPool.sol
-     * @dev Calculates protocol fee amounts in BPT terms
-     * Overrides an inherited function and some arguments are intentionally not used (balances, normalizedWeights)
-     * protocolSwapFeePercentage is not used b/c we take parameters from GyroConfig instead
-     * Returns dueFees, where dueFees[0] = BPT due to Gyro, and dueFees[1] = BPT due to Balancer
+     * @dev
+     * Note: This function is identical to that used in GyroTwoPool.sol.
+     * Calculates protocol fee amounts in BPT terms.
+     * protocolSwapFeePercentage is not used here b/c we take parameters from GyroConfig instead.
+     * Returns: BPT due to Gyro, BPT due to Balancer, receiving address for Gyro fees, receiving address for Balancer
+     * fees.
      */
     function _getDueProtocolFeeAmounts(uint256 previousInvariant, uint256 currentInvariant)
         internal

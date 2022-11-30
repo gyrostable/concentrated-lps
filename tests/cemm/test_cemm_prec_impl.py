@@ -23,9 +23,6 @@ from tests.cemm import cemm_prec_implementation as prec_impl
 from tests.support.quantized_decimal_100 import QuantizedDecimal as D3
 from tests.support.types import *
 from tests.support.utils import scale, to_decimal, qdecimals, unscale, apply_deep
-from tests.cemm import util
-
-util.mimpl = mimpl  # Monkey patching in the higher-prec impl. Sorry...
 
 from math import pi, sin, cos, tan, acos
 
@@ -71,10 +68,16 @@ def paramsTo100(params: CEMMMathParams) -> CEMMMathParams:
     """Convert params to a high-precision version. This is more than just type conversion, we also re-normalize!"""
     params = convd(params, D3)
     pd = params._asdict()
-    d = (params.s ** 2 + params.c ** 2).sqrt()
+    d = (params.s**2 + params.c**2).sqrt()
     pd["s"] /= d
     pd["c"] /= d
     return CEMMMathParams(**pd)
+
+
+def params2MathParams(params: CEMMMathParams) -> mimpl.Params:
+    """Map 100-decimal CEMMMathParams to 100-decimal mimpl.Params.
+    This is equal to .util.params2MathParams() but has to be re-written to use the right cemm impl module."""
+    return mimpl.Params(params.alpha, params.beta, params.c, -params.s, params.l)
 
 
 bpool_params = BasicPoolParameters(
@@ -152,7 +155,7 @@ def gen_params_conservative(draw):
 ######################################################################################
 # @given(params=gen_params())
 # def test_calcAChiAChi(gyro_cemm_math_testing, params):
-#     mparams = util.params2MathParams(paramsTo100(params))
+#     mparams = params2MathParams(paramsTo100(params))
 #     derived_m = mparams  # Legacy fix
 
 #     derived = prec_impl.calc_derived_values(params)
@@ -175,7 +178,7 @@ def gen_params_conservative(draw):
 
 @given(params=gen_params())
 def test_calcAChiAChiInXp(gyro_cemm_math_testing, params):
-    mparams = util.params2MathParams(paramsTo100(params))
+    mparams = params2MathParams(paramsTo100(params))
     derived_m = mparams  # Legacy fix
 
     derived = prec_impl.calc_derived_values(params)
@@ -220,7 +223,7 @@ def test_calcAtAChi(gyro_cemm_math_testing, params, balances):
     balances=gen_balances(2, bpool_params),
 )
 def test_calcAtAChi_sense_check(params, balances):
-    mparams = util.params2MathParams(paramsTo100(params))
+    mparams = params2MathParams(paramsTo100(params))
     derived_m = mparams  # Legacy fix
 
     derived = prec_impl.calc_derived_values(params)
@@ -258,7 +261,7 @@ def test_calcMinAtxAChiySqPlusAtxSq(gyro_cemm_math_testing, params, balances):
     balances=gen_balances(2, bpool_params),
 )
 def test_calcMinAtxAChiySqPlusAtxSq_sense_check(params, balances):
-    mparams = util.params2MathParams(paramsTo100(params))
+    mparams = params2MathParams(paramsTo100(params))
     derived_m = mparams  # Legacy fix
 
     derived = prec_impl.calc_derived_values(params)
@@ -298,7 +301,7 @@ def test_calc2AtxAtyAChixAChiy(gyro_cemm_math_testing, params, balances):
     balances=gen_balances(2, bpool_params),
 )
 def test_calc2AtxAtyAChixAChiy_sense_check(params, balances):
-    mparams = util.params2MathParams(paramsTo100(params))
+    mparams = params2MathParams(paramsTo100(params))
     derived_m = mparams  # Legacy fix
 
     derived = prec_impl.calc_derived_values(params)
@@ -337,7 +340,7 @@ def test_calcMinAtyAChixSqPlusAtySq(gyro_cemm_math_testing, params, balances):
     balances=gen_balances(2, bpool_params),
 )
 def test_calcMinAtyAChixSqPlusAtySq_sense_check(params, balances):
-    mparams = util.params2MathParams(paramsTo100(params))
+    mparams = params2MathParams(paramsTo100(params))
     derived_m = mparams  # Legacy fix
 
     derived = prec_impl.calc_derived_values(params)
@@ -361,13 +364,13 @@ def test_calcMinAtyAChixSqPlusAtySq_sense_check(params, balances):
 )
 @example(
     params=CEMMMathParams(
-        alpha=D('0.050000000000020290'),
-        beta=D('0.397316269897841178'),
-        c=D('0.869675796261884515'),
-        s=D('0.493623347701723947'),
-        l=D('30098365.475000000000000000')),
-    balances=[D('60138484034.385962001000000000'),
-     D('1.404490000000000000')]
+        alpha=D("0.050000000000020290"),
+        beta=D("0.397316269897841178"),
+        c=D("0.869675796261884515"),
+        s=D("0.493623347701723947"),
+        l=D("30098365.475000000000000000"),
+    ),
+    balances=[D("60138484034.385962001000000000"), D("1.404490000000000000")],
 )
 def test_calcInvariantSqrt(gyro_cemm_math_testing, params, balances):
     derived = prec_impl.calc_derived_values(params)
@@ -388,13 +391,13 @@ def test_calcInvariantSqrt(gyro_cemm_math_testing, params, balances):
 )
 @example(
     params=CEMMMathParams(
-        alpha=D('0.050000000000020290'),
-        beta=D('0.397316269897841178'),
-        c=D('0.869675796261884515'),
-        s=D('0.493623347701723947'),
-        l=D('30098365.475000000000000000')),
-    balances=[D('60138484034.385962001000000000'),
-     D('1.404490000000000000')]
+        alpha=D("0.050000000000020290"),
+        beta=D("0.397316269897841178"),
+        c=D("0.869675796261884515"),
+        s=D("0.493623347701723947"),
+        l=D("30098365.475000000000000000"),
+    ),
+    balances=[D("60138484034.385962001000000000"), D("1.404490000000000000")],
 )
 def test_calculateInvariant(gyro_cemm_math_testing, params, balances):
     derived = prec_impl.calc_derived_values(params)
@@ -419,11 +422,11 @@ def test_calculateInvariant(gyro_cemm_math_testing, params, balances):
     balances=gen_balances(2, bpool_params),
 )
 def test_calculateInvariant_sense_check(params, balances):
-    mparams = util.params2MathParams(paramsTo100(params))
+    mparams = params2MathParams(paramsTo100(params))
 
     derived = prec_impl.calc_derived_values(params)
     denominator = prec_impl.calcAChiAChiInXp(params, derived) - D2(1)
-    assume(denominator > D2("0.01"))  # if this is not the case, error can blow up
+    assume(denominator > D2("1E-5"))  # if this is not the case, error can blow up
 
     result_py, err_py = prec_impl.calculateInvariantWithError(balances, params, derived)
     # test against the old (imprecise) implementation
@@ -439,9 +442,9 @@ def test_calculateInvariant_sense_check(params, balances):
 )
 def test_calculateInvariant_error_not_too_bad(gyro_cemm_math_testing, params, balances):
     derived = prec_impl.calc_derived_values(params)
-    result_py, err_py = prec_impl.calculateInvariantWithError(balances, params, derived)
     denominator = prec_impl.calcAChiAChiInXp(params, derived) - D2(1)
-    assume(denominator > D2("0.01"))  # if this is not the case, error can blow up
+    assume(denominator > D2("1E-5"))  # if this is not the case, error can blow up
+    result_py, err_py = prec_impl.calculateInvariantWithError(balances, params, derived)
     assert err_py < D("3e-8")
     if result_py < D(1):
         assert err_py / result_py < D("1e-8")
@@ -477,7 +480,7 @@ def test_virtualOffsets_sense_check(params, invariant):
     derived = prec_impl.calc_derived_values(params)
 
     denominator = prec_impl.calcAChiAChiInXp(params, derived) - D2(1)
-    assume(denominator > D2("0.01"))  # if this is not the case, error can blow up
+    assume(denominator > D2("1E-5"))  # if this is not the case, error can blow up
 
     # test w/o error in invariant
     r = (invariant, invariant)
@@ -486,7 +489,7 @@ def test_virtualOffsets_sense_check(params, invariant):
     b_py = prec_impl.virtualOffset1(params, derived, r)
 
     # test against the old (imprecise) implementation
-    mparams = util.params2MathParams(paramsTo100(params))
+    mparams = params2MathParams(paramsTo100(params))
     midprice = (mparams.alpha + mparams.beta) / D3(2)
     cemm = mimpl.CEMM.from_px_r(midprice, convd(invariant, D3), mparams)
     assert a_py == convd(cemm.a, D).approxed(abs=D("1e-17"))
@@ -525,7 +528,7 @@ def test_calcXpXpDivLambdaLambda_sense_check(params, balances):
     derived = prec_impl.calc_derived_values(params)
 
     denominator = prec_impl.calcAChiAChiInXp(params, derived) - D2(1)
-    assume(denominator > D2("0.01"))  # if this is not the case, error can blow up
+    assume(denominator > D2("1E-5"))  # if this is not the case, error can blow up
 
     invariant, err = prec_impl.calculateInvariantWithError(balances, params, derived)
     r = (invariant + 2 * D(err), invariant)
@@ -595,7 +598,7 @@ def test_calcYpYpDivLambdaLambda_sense_check(params, balances):
     derived = prec_impl.calc_derived_values(params)
 
     denominator = prec_impl.calcAChiAChiInXp(params, derived) - D2(1)
-    assume(denominator > D2("0.01"))  # if this is not the case, error can blow up
+    assume(denominator > D2("1E-5"))  # if this is not the case, error can blow up
 
     invariant, err = prec_impl.calculateInvariantWithError(balances, params, derived)
     r = (invariant + 2 * D(err), invariant)
@@ -717,7 +720,7 @@ def test_solveQuadraticSwap_sense_check(params, balances):
     derived = prec_impl.calc_derived_values(params)
 
     denominator = prec_impl.calcAChiAChiInXp(params, derived) - D2(1)
-    assume(denominator > D2("0.01"))  # if this is not the case, error can blow up
+    assume(denominator > D2("1E-5"))  # if this is not the case, error can blow up
     assume(sum(balances) > D(100))
 
     invariant, err = prec_impl.calculateInvariantWithError(balances, params, derived)
@@ -740,7 +743,7 @@ def test_solveQuadraticSwap_sense_check(params, balances):
         params.l, balances[1], params.c, params.s, r, [b, a], tau_beta, derived.dSq
     )
 
-    mparams = util.params2MathParams(paramsTo100(params))
+    mparams = params2MathParams(paramsTo100(params))
     # sense test against old implementation
     midprice = (mparams.alpha + mparams.beta) / D3(2)
     cemm = mimpl.CEMM.from_px_r(
@@ -868,12 +871,12 @@ def calculate_swap_error(params, balances, r, derived):
 @given(params=gen_params(), balances=gen_balances(2, bpool_params))
 def test_calcYGivenX_error_not_too_bad(params, balances):
     derived = prec_impl.calc_derived_values(params)
+    denominator = prec_impl.calcAChiAChiInXp(params, derived) - D2(1)
+    assume(denominator > D2("1E-5"))  # if this is not the case, error can blow up
+    assume(sum(balances) > D(100))
+
     invariant, err = prec_impl.calculateInvariantWithError(balances, params, derived)
     r = (invariant + 2 * D(err), invariant)
-
-    denominator = prec_impl.calcAChiAChiInXp(params, derived) - D2(1)
-    assume(denominator > D2("0.01"))  # if this is not the case, error can blow up
-    assume(sum(balances) > D(100))
 
     # calculate swap error tolerance
     swap_err_xy, swap_err_yx = calculate_swap_error(params, balances, r, derived)
@@ -894,17 +897,17 @@ def test_calcYGivenX_error_not_too_bad(params, balances):
 )
 def test_calcYGivenX_sense_check(params, balances):
     derived = prec_impl.calc_derived_values(params)
+    denominator = prec_impl.calcAChiAChiInXp(params, derived) - D2(1)
+    assume(denominator > D2("1E-5"))  # if this is not the case, error can blow up
+    assume(sum(balances) > D(100))
+
     invariant, err = prec_impl.calculateInvariantWithError(balances, params, derived)
     r = (invariant + 2 * D(err), invariant)
-
-    denominator = prec_impl.calcAChiAChiInXp(params, derived) - D2(1)
-    assume(denominator > D2("0.01"))  # if this is not the case, error can blow up
-    assume(sum(balances) > D(100))
 
     y_py = prec_impl.calcYGivenX(balances[0], params, derived, r)
     x_py = prec_impl.calcXGivenY(balances[1], params, derived, r)
 
-    mparams = util.params2MathParams(paramsTo100(params))
+    mparams = params2MathParams(paramsTo100(params))
     # sense test against old implementation
     midprice = (mparams.alpha + mparams.beta) / D3(2)
     cemm = mimpl.CEMM.from_px_r(
@@ -953,14 +956,14 @@ def test_maxBalances_sense_check(params, balances):
     derived = prec_impl.calc_derived_values(params)
 
     denominator = prec_impl.calcAChiAChiInXp(params, derived) - D2(1)
-    assume(denominator > D2("0.01"))  # if this is not the case, error can blow up
+    assume(denominator > D2("1E-5"))  # if this is not the case, error can blow up
 
     invariant, err = prec_impl.calculateInvariantWithError(balances, params, derived)
     r = (invariant + 2 * D(err), invariant)
     xp_py = prec_impl.maxBalances0(params, derived, r)
     yp_py = prec_impl.maxBalances1(params, derived, r)
     # sense test against old implementation
-    mparams = util.params2MathParams(paramsTo100(params))
+    mparams = params2MathParams(paramsTo100(params))
     midprice = (mparams.alpha + mparams.beta) / D3(2)
     cemm = mimpl.CEMM.from_px_r(midprice, convd(invariant, D3), mparams)
 

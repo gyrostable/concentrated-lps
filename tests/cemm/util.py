@@ -32,7 +32,9 @@ def params2MathParams(params: CEMMMathParams) -> mimpl.Params:
 
 
 def mathParams2DerivedParams(mparams: mimpl.Params) -> CEMMMathDerivedParams:
-    return prec_impl.calc_derived_values(mparams)  # Type mismatch but "duck" compatible.
+    return prec_impl.calc_derived_values(
+        mparams
+    )  # Type mismatch but "duck" compatible.
 
 
 @st.composite
@@ -122,6 +124,12 @@ def mtest_zeta(params_px, gyro_cemm_math_testing):
         px,
     ) = params_px  # Annoying manual unpacking b/c hypothesis is oddly limited at dependent arguments.
     mparams = params2MathParams(params)
+
+    # DEBUG: WEIRD IMPORT ERROR!
+    # Problem: mimpl is actually cemm_100.py, not cemm.py, which leads to problems.
+    assert isinstance(mparams, mimpl.Params)  # Catch weird type error
+    assert str(type(mparams)) == "<class 'tests.cemm.cemm.Params'>"
+
     res_sol = gyro_cemm_math_testing.zeta(scale(params), scale(px))
     res_math = mparams.zeta(px)
     assert int(res_sol) == scale(res_math)
@@ -945,8 +953,12 @@ def mtest_invariant_across_liquidityInvariantUpdate(
     derived = prec_impl.calc_derived_values(params)
 
     denominator = prec_impl.calcAChiAChiInXp(params, derived) - D2(1)
-    assume(denominator > D2("0.01"))  # if this is not the case, error can blow up
+    # Debug code for debugging the tests (sample generation)
+    # print("\nDEBUG AFTER fun start")
+    assume(denominator > D2("1E-5"))  # if this is not the case, error can blow up
+    # print("DEBUG AFTER denom check")
     assume(sum(balances) > D(100))
+    # print("DEBUG AFTER balances check")
 
     derived_scaled = prec_impl.scale_derived_values(derived)
     invariant_before, err_before = prec_impl.calculateInvariantWithError(
@@ -977,18 +989,20 @@ def mtest_invariant_across_liquidityInvariantUpdate(
     invariant_after, err_after = prec_impl.calculateInvariantWithError(
         new_balances, params, derived
     )
-    abs_tol = D(2) * (
-        D(err_before) + D(err_after) + (D("1e-18") * invariant_before) / bpt_supply
-    )
-    rel_tol = D("1e-16") / min(D(1), bpt_supply)
+    # abs_tol = D(2) * (
+    #     D(err_before) + D(err_after) + (D("1e-18") * invariant_before) / bpt_supply
+    # )
+    # rel_tol = D("1e-16") / min(D(1), bpt_supply)
     # if D(invariant_updated) != D(invariant_after).approxed(abs=abs_tol, rel=rel_tol):
     if isIncrease and invariant_updated < invariant_after:
         loss = calculate_loss(
             invariant_updated - invariant_after, invariant_after, new_balances
         )
     elif not isIncrease and invariant_updated > invariant_after:
+        # We use `err_after` to compensate for errors in the invariant calculation itself. We don't have to do this
+        # above b/c calculateInvariantWithError() yields an underestimate and this is already the worst case there.
         loss = calculate_loss(
-            invariant_after - invariant_updated, invariant_after, new_balances
+            invariant_after + err_after - invariant_updated, invariant_after + err_after, new_balances
         )
     else:
         loss = (D(0), D(0))

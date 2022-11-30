@@ -8,48 +8,12 @@ import "../GyroCEMMMath.sol";
 import "../../../libraries/GyroPoolMath.sol";
 
 contract GyroCEMMMathTesting {
-    function validateParams(GyroCEMMMath.Params memory params) external pure {
-        return GyroCEMMMath.validateParams(params);
-    }
-
-    function validateDerivedParams(GyroCEMMMath.Params memory params, GyroCEMMMath.DerivedParams memory derived) external pure {
-        GyroCEMMMath.validateDerivedParams(params, derived);
-    }
-
     function scalarProd(GyroCEMMMath.Vector2 memory t1, GyroCEMMMath.Vector2 memory t2) external pure returns (int256 ret) {
         ret = GyroCEMMMath.scalarProd(t1, t2);
     }
 
     function mulA(GyroCEMMMath.Params memory params, GyroCEMMMath.Vector2 memory tp) external pure returns (GyroCEMMMath.Vector2 memory t) {
         t = GyroCEMMMath.mulA(params, tp);
-    }
-
-    function zeta(GyroCEMMMath.Params memory params, int256 px) external pure returns (int256 pxc) {
-        pxc = GyroCEMMMath.zeta(params, px);
-    }
-
-    function tau(GyroCEMMMath.Params memory params, int256 px) external pure returns (GyroCEMMMath.Vector2 memory tpp) {
-        tpp = GyroCEMMMath.tau(params, px);
-    }
-
-    function tau(
-        GyroCEMMMath.Params memory params,
-        int256 px,
-        int256 sqrt
-    ) external pure returns (GyroCEMMMath.Vector2 memory tpp) {
-        return GyroCEMMMath.tau(params, px, sqrt);
-    }
-
-    function mkDerivedParams(GyroCEMMMath.Params memory params) external pure returns (GyroCEMMMath.DerivedParams memory derived) {
-        derived = GyroCEMMMath.mkDerivedParams(params);
-    }
-
-    function eta(int256 pxc) external pure returns (GyroCEMMMath.Vector2 memory tpp) {
-        tpp = GyroCEMMMath.eta(pxc);
-    }
-
-    function eta(int256 pxc, int256 z) external pure returns (GyroCEMMMath.Vector2 memory tpp) {
-        tpp = GyroCEMMMath.eta(pxc, z);
     }
 
     function virtualOffset0(

@@ -46,8 +46,11 @@ bpool_params = BasicPoolParameters(
 @st.composite
 def gen_params(draw):
     phi = 0
-    alpha = draw(qdecimals("0.05", "19.0"))
-    beta = draw(qdecimals(alpha.raw + MIN_PRICE_SEPARATION, "20.0"))
+    # The range of prices is relatively tight b/c we otherwise generate a lot of invalid examples where the price
+    # range is small and offset from 1, in which case Aχ * Aχ is too close to 1 in the invariant computation formula.
+    # In practice, this can be prevented by rescaling.
+    alpha = draw(qdecimals("0.2", "4.0"))
+    beta = draw(qdecimals(alpha.raw + MIN_PRICE_SEPARATION, "5.0"))
     s = sin(phi)
     c = cos(phi)
     l = D(1)

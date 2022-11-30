@@ -91,12 +91,12 @@ def gen_params_px(draw):
     px = draw(qdecimals(params.alpha.raw, params.beta.raw))
     return params, px
 
-
+@pytest.mark.skip(reason="Function currently removed")
 @given(params_px=gen_params_px())
 def test_zeta(params_px, gyro_cemm_math_testing):
     util.mtest_zeta(params_px, gyro_cemm_math_testing)
 
-
+@pytest.mark.skip(reason="Function currently removed")
 @given(params_px=gen_params_px())
 def test_tau(params_px, gyro_cemm_math_testing):
     util.mtest_tau(params_px, gyro_cemm_math_testing)

@@ -11,7 +11,8 @@ if __name__ == "__main__":
     brownie.reverts = None
 
 import pandas as pd
-from hypothesis import given, settings, assume, example, HealthCheck
+from brownie.test import given
+from hypothesis import settings, assume, example, HealthCheck
 from hypothesis import strategies as st
 
 from tests.cemm.util import (

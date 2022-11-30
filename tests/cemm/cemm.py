@@ -44,7 +44,7 @@ def eta(pxc: D) -> Vector:
 
     Lemma 4."""
     # TODO rename to make clearer
-    z = sqrt(D(1) + pxc ** 2)
+    z = sqrt(D(1) + pxc**2)
     return pxc / z, D(1) / z
 
 
@@ -192,7 +192,7 @@ class CEMM:
         a = scalarprod(*achi, *achi) - D(1)
         b = scalarprod(*at, *achi)
         c = scalarprod(*at, *at)
-        d = b ** 2 - a * c
+        d = b**2 - a * c
         dr = sqrt(d)
         ret.r = (b + dr) / a
         return ret
@@ -301,7 +301,7 @@ class CEMM:
     def show_invariant_r(self):
         """For testing. Calculate the LHS, RHS of the invariant based on r. These should be equal."""
         xpp, ypp = self.params.A_times(self.x - self.a, self.y - self.b)
-        return xpp ** 2 + ypp ** 2, self.r ** 2
+        return xpp**2 + ypp**2, self.r**2
 
     def trade_x(self, dx: D, mock: bool = False) -> Optional[D]:
         """Proposition 11. Trade a given amount of x for y.
@@ -350,15 +350,15 @@ class CEMM:
 
         xp = x - self.a
 
-        ls = 1 - 1 / self.params.l ** 2  # λ underlined in the prop.
+        ls = 1 - 1 / self.params.l**2  # λ underlined in the prop.
         s = self.params.s
         c = self.params.c
 
-        d = s ** 2 * c ** 2 * ls ** 2 * xp ** 2 - (1 - ls * s ** 2) * (
-            (1 - ls * c ** 2) * xp ** 2 - self.r ** 2
+        d = s**2 * c**2 * ls**2 * xp**2 - (1 - ls * s**2) * (
+            (1 - ls * c**2) * xp**2 - self.r**2
         )
         dr = sqrt(d)
-        yp = (-s * c * ls * xp - dr) / (1 - ls * s ** 2)
+        yp = (-s * c * ls * xp - dr) / (1 - ls * s**2)
 
         y = yp + self.b
 
@@ -376,17 +376,17 @@ class CEMM:
         if not nomaxvals and y > self.ymax:
             return None
 
-        ls = 1 - 1 / self.params.l ** 2  # λ underlined in the prop.
+        ls = 1 - 1 / self.params.l**2  # λ underlined in the prop.
         s = self.params.s
         c = self.params.c
 
         yp = y - self.b
 
-        d = s ** 2 * c ** 2 * ls ** 2 * yp ** 2 - (1 - ls * c ** 2) * (
-            (1 - ls * s ** 2) * yp ** 2 - self.r ** 2
+        d = s**2 * c**2 * ls**2 * yp**2 - (1 - ls * c**2) * (
+            (1 - ls * s**2) * yp**2 - self.r**2
         )
         dr = sqrt(d)
-        xp = (-s * c * ls * yp - dr) / (1 - ls * c ** 2)
+        xp = (-s * c * ls * yp - dr) / (1 - ls * c**2)
 
         x = xp + self.a
 

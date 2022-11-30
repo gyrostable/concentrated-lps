@@ -66,12 +66,12 @@ def gen_params_px(draw):
     px = draw(qdecimals(params.alpha.raw, params.beta.raw))
     return params, px
 
-
+@pytest.mark.skip(reason="Function currently removed")
 @given(params_px=gen_params_px())
 def test_zeta(params_px, gyro_cemm_math_testing):
     util.mtest_zeta(params_px, gyro_cemm_math_testing)
 
-
+@pytest.mark.skip(reason="Function currently removed")
 @given(pxc=qdecimals("-1E16", "1E16"))
 def test_eta(pxc, gyro_cemm_math_testing):
     # eta is very precise in the grand scheme of things, but of course we can't be more precise than sqrt() across the range of values we care about.
@@ -81,7 +81,7 @@ def test_eta(pxc, gyro_cemm_math_testing):
     assert int(res_sol[0]) == scale(res_math[0]).approxed(abs=D("1e5"), rel=D("1e-16"))
     assert int(res_sol[1]) == scale(res_math[1]).approxed(abs=D("1e5"), rel=D("1e-16"))
 
-
+@pytest.mark.skip(reason="Function currently removed")
 @given(params_px=gen_params_px())
 def test_tau(params_px, gyro_cemm_math_testing):
     util.mtest_tau(params_px, gyro_cemm_math_testing)
@@ -255,12 +255,8 @@ def gen_args_calcOutGivenIn(draw):
 
 
 @settings(max_examples=100)
-@given(
-    args=gen_args_calcOutGivenIn()
-)
-def test_calcOutGivenIn(
-    args, gyro_cemm_math_testing
-):
+@given(args=gen_args_calcOutGivenIn())
+def test_calcOutGivenIn(args, gyro_cemm_math_testing):
     params, balances, amountIn, tokenInIsToken0 = args
 
     ixIn = 0 if tokenInIsToken0 else 1
