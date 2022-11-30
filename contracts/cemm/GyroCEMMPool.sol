@@ -42,6 +42,7 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
     struct GyroParams {
         NewPoolParams baseParams;
         GyroCEMMMath.Params cemmParams;
+        GyroCEMMMath.DerivedParams derivedCemmParams;
     }
 
     constructor(GyroParams memory params, address configAddress) ExtensibleWeightedPool2Tokens(params.baseParams) {

@@ -18,7 +18,8 @@ import "@openzeppelin/contracts/utils/SafeCast.sol";
 library GyroCEMMMath {
     uint256 internal constant ONEHALF = 0.5e18;
 
-    int256 internal constant VALIDATION_PRECISION_CS_NORM = 100; // 1e-16
+    int256 internal constant VALIDATION_PRECISION_NORMED_INPUT = 500; // 5e-16
+    int256 internal constant VALIDATION_PRECISION_ZETA = 500; // 5e-16
 
     using SignedFixedPoint for int256;
     using FixedPoint for uint256;
@@ -28,6 +29,7 @@ library GyroCEMMMath {
     // Swap limits: amounts swapped may not be larger than this percentage of total balance.
     uint256 internal constant _MAX_IN_RATIO = 0.3e18;
     uint256 internal constant _MAX_OUT_RATIO = 0.3e18;
+    uint256 internal constant _MIN_BAL_RATIO = 1e13; // 1e-5
 
     // Note that all t values (not tp or tpp) could consist of uint's, as could all Params. But it's complicated to
     // convert all the time, so we make them all signed. We also store all intermediate values signed. An exception are
@@ -47,7 +49,6 @@ library GyroCEMMMath {
     }
 
     function validateParams(Params memory params) internal pure {
-        // Perhaps this should go into the GyroCEMMMath?
         _require(params.alpha > 0, GyroCEMMPoolErrors.PRICE_BOUNDS_WRONG);
         _require(params.beta > params.alpha, GyroCEMMPoolErrors.PRICE_BOUNDS_WRONG);
         _require(params.c >= 0, GyroCEMMPoolErrors.ROTATION_VECTOR_WRONG);
@@ -69,6 +70,41 @@ library GyroCEMMMath {
     struct Vector2 {
         int256 x;
         int256 y;
+    }
+
+    /// @dev Ensures that `v` is approximately normed (i.e., lies on the unit circle).
+    function validateNormed(Vector2 memory v, uint256 error_code) internal pure {
+        int256 norm = v.x.mulDown(v.x);
+        norm = norm.add(v.y.mulDown(v.y));
+        _require(
+            SignedFixedPoint.ONE - VALIDATION_PRECISION_NORMED_INPUT <= norm && norm <= SignedFixedPoint.ONE + VALIDATION_PRECISION_NORMED_INPUT,
+            error_code
+        );
+    }
+
+    /** @dev Ensures `derived ~ mkDerivedParams(params)`, without having to compute a square root.
+     * This is useful mainly for numerical precision. */
+    function validateDerivedParams(Params memory params, DerivedParams memory derived) internal pure {
+        // tau vectors need to be normed b/c they're points on the unit circle.
+        // This ensures that the tau value is = tau(px) for *some* px.
+        validateNormed(derived.tauAlpha, GyroCEMMPoolErrors.DERIVED_TAU_NOT_NORMALIZED);
+        validateNormed(derived.tauBeta, GyroCEMMPoolErrors.DERIVED_TAU_NOT_NORMALIZED);
+
+        // It is easy to see that from the definition of eta that the underlying pxc value can be extracted as .x/.y.
+        // This should be equal to the corresponding zeta value. We can compare for actual equality.
+        int256 pxc = derived.tauAlpha.x.divUp(derived.tauAlpha.y);
+        int256 pxc_computed = zeta(params, params.alpha);
+        _require(
+            pxc - VALIDATION_PRECISION_ZETA <= pxc_computed && pxc_computed <= pxc + VALIDATION_PRECISION_ZETA,
+            GyroCEMMPoolErrors.DERIVED_ZETA_WRONG
+        );
+
+        pxc = derived.tauBeta.x.divUp(derived.tauBeta.y);
+        pxc_computed = zeta(params, params.beta);
+        _require(
+            pxc - VALIDATION_PRECISION_ZETA <= pxc_computed && pxc_computed <= pxc + VALIDATION_PRECISION_ZETA,
+            GyroCEMMPoolErrors.DERIVED_ZETA_WRONG
+        );
     }
 
     // Scalar product of Vector2 objects
@@ -200,7 +236,8 @@ library GyroCEMMMath {
 
     /** Solve quadratic equation for the 'plus sqrt' solution
      *  qparams contains a,b,c coefficients defining the quadratic.
-     *  Reverts if the equation has no solution or is actually linear (i.e., a==0) */
+     *  Reverts if the equation has no solution or is actually linear (i.e., a==0)
+     *  This is used in invariant calculation for an underestimate */
     function solveQuadraticPlus(QParams memory qparams) internal pure returns (int256 x) {
         int256 sqrt = qparams.b.mulDown(qparams.b).sub(4 * SignedFixedPoint.ONE.mulUp(qparams.a).mulUp(qparams.c));
         sqrt = FixedPoint.powDown(sqrt.toUint256(), ONEHALF).toInt256();
@@ -208,7 +245,9 @@ library GyroCEMMMath {
     }
 
     /** Solve quadratic equation for the 'minus sqrt' solution
-     *   qparams contains a,b,c coefficients defining the quadratic */
+     *  qparams contains a,b,c coefficients defining the quadratic
+     *  This is used in swap calculations, where we want to underestimate the square root b/c we want to
+     *  overestimate new reserve balances (and so underestimate the swap out amount) */
     function solveQuadraticMinus(QParams memory qparams) internal pure returns (int256 x) {
         int256 sqrt = qparams.b.mulDown(qparams.b).sub(4 * SignedFixedPoint.ONE.mulUp(qparams.a).mulUp(qparams.c));
         sqrt = FixedPoint.powDown(sqrt.toUint256(), ONEHALF).toInt256();
@@ -279,14 +318,15 @@ library GyroCEMMMath {
         Params memory params,
         DerivedParams memory derived,
         int256 invariant,
-        int256 newBalance,
+        int256 newBal,
         uint8 assetIndex
     ) internal pure {
         Vector2 memory xyPlus = maxBalances(params, derived, invariant);
+        int256 factor = SignedFixedPoint.ONE.sub(_MIN_BAL_RATIO.toInt256());
         if (assetIndex == 0) {
-            _require(newBalance < xyPlus.x, GyroCEMMPoolErrors.ASSET_BOUNDS_EXCEEDED);
+            _require(newBal < xyPlus.x.mulDown(factor), GyroCEMMPoolErrors.ASSET_BOUNDS_EXCEEDED);
         } else {
-            _require(newBalance < xyPlus.y, GyroCEMMPoolErrors.ASSET_BOUNDS_EXCEEDED);
+            _require(newBal < xyPlus.y.mulDown(factor), GyroCEMMPoolErrors.ASSET_BOUNDS_EXCEEDED);
         }
     }
 
@@ -312,10 +352,17 @@ library GyroCEMMMath {
         }
 
         _require(amountIn <= balances[ixIn].mulDown(_MAX_IN_RATIO), Errors.MAX_IN_RATIO);
-        int256 balanceInNew = balances[ixIn].add(amountIn).toInt256();
-        checkAssetBounds(params, derived, uinvariant.toInt256(), balanceInNew, ixIn);
-        int256 balanceOutNew = calcGiven(balanceInNew, params, derived, uinvariant.toInt256());
-        amountOut = balances[ixOut].sub(balanceOutNew.toUint256()); // calcGiven guarantees that this is safe.
+        int256 balInNew = balances[ixIn].add(amountIn).toInt256();
+        checkAssetBounds(params, derived, uinvariant.toInt256(), balInNew, ixIn);
+        int256 balOutNew = calcGiven(balInNew, params, derived, uinvariant.toInt256());
+        uint256 assetBoundError = GyroCEMMPoolErrors.ASSET_BOUNDS_EXCEEDED;
+        _require(balOutNew.toUint256() < balances[ixOut], assetBoundError);
+        if (balOutNew >= balInNew) {
+            _require(balInNew.divUp(balOutNew) > _MIN_BAL_RATIO.toInt256(), assetBoundError);
+        } else {
+            _require(balOutNew.divUp(balInNew) > _MIN_BAL_RATIO.toInt256(), assetBoundError);
+        }
+        amountOut = balances[ixOut].sub(balOutNew.toUint256());
         _require(amountOut <= balances[ixOut].mulDown(_MAX_OUT_RATIO), Errors.MAX_OUT_RATIO);
     }
 
@@ -341,10 +388,17 @@ library GyroCEMMMath {
         }
 
         _require(amountOut <= balances[ixOut].mulDown(_MAX_OUT_RATIO), Errors.MAX_OUT_RATIO);
-        int256 balanceOutNew = balances[ixOut].sub(amountOut).toInt256();
-        int256 balanceInNew = calcGiven(balanceOutNew, params, derived, uinvariant.toInt256());
-        checkAssetBounds(params, derived, uinvariant.toInt256(), balanceInNew, ixIn);
-        amountIn = balanceInNew.toUint256().sub(balances[ixIn]); // calcGiven guarantees that this is safe.
+        int256 balOutNew = balances[ixOut].sub(amountOut).toInt256();
+        int256 balInNew = calcGiven(balOutNew, params, derived, uinvariant.toInt256());
+        uint256 assetBoundError = GyroCEMMPoolErrors.ASSET_BOUNDS_EXCEEDED;
+        _require(balInNew.toUint256() > balances[ixIn], assetBoundError);
+        checkAssetBounds(params, derived, uinvariant.toInt256(), balInNew, ixIn);
+        if (balOutNew >= balInNew) {
+            _require(balInNew.divUp(balOutNew) > _MIN_BAL_RATIO.toInt256(), assetBoundError);
+        } else {
+            _require(balOutNew.divUp(balInNew) > _MIN_BAL_RATIO.toInt256(), assetBoundError);
+        }
+        amountIn = balInNew.toUint256().sub(balances[ixIn]);
         _require(amountIn <= balances[ixIn].mulDown(_MAX_IN_RATIO), Errors.MAX_IN_RATIO);
     }
 
@@ -396,26 +450,6 @@ library GyroCEMMMath {
         x = solveQuadraticMinus(qparams);
         // shift back by the virtual offsets
         x = x.add(ab.x);
-    }
-
-    /** @dev calculate sqrt(1+zeta(px)^2) by taking advantage of Equation 7 in 2.1.7
-     *  This can be used in liquidity updates to save gas */
-    // SOMEDAY we might want to use the formula for the larger of the two balances to improve numerical accuracy.
-    function calculateSqrtOnePlusZetaSquared(
-        uint256[] memory balances,
-        Params memory params,
-        DerivedParams memory derived,
-        int256 invariant
-    ) internal pure returns (int256 sqrt) {
-        Vector2 memory ab = virtualOffsets(params, derived, invariant);
-        // shift by virtual offsets
-        Vector2 memory vt;
-        vt.x = balances[0].toInt256().sub(ab.x);
-        vt.y = balances[1].toInt256().sub(ab.y);
-        // transform by A
-        vt = mulA(params, vt);
-        // sqrt(1+zeta(px)^2) = - r / (Av(t).y). See Equation 7 in 2.1.7
-        sqrt = -invariant.divUp(vt.y);
     }
 
     /** @dev If `deltaBalances` are such that, when changing `balances` by it, the price stays the same ("balanced

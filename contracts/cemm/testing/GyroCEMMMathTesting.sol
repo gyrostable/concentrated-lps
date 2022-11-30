@@ -151,15 +151,6 @@ contract GyroCEMMMathTesting {
         x = GyroCEMMMath.calcXGivenY(y, params, derived, invariant);
     }
 
-    function calculateSqrtOnePlusZetaSquared(
-        uint256[] memory balances,
-        GyroCEMMMath.Params memory params,
-        GyroCEMMMath.DerivedParams memory derived,
-        int256 invariant
-    ) external pure returns (int256 sqrt) {
-        sqrt = GyroCEMMMath.calculateSqrtOnePlusZetaSquared(balances, params, derived, invariant);
-    }
-
     function liquidityInvariantUpdate(
         uint256[] memory balances,
         uint256 uinvariant,

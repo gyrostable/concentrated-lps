@@ -1,7 +1,10 @@
+# Floating-point version of the CEMM implementation
+
 from dataclasses import dataclass
 
 # noinspection PyPep8Naming
-from tests.support.quantized_decimal import QuantizedDecimal as D
+D = float
+
 from functools import cached_property
 from math import cos, sin, pi
 
@@ -9,7 +12,7 @@ from math import cos, sin, pi
 # from dfuzzy import isle, isge
 from typing import Optional
 
-from tests.support.dfuzzy import (
+from tests.support.dfuzzy_float import (
     isclose,
     prec_sanity_check,
     soft_clamp,
@@ -288,7 +291,7 @@ class CEMM:
         xpp, ypp = self.params.A_times(self.x - self.a, self.y - self.b)
         return xpp**2 + ypp**2, self.r**2
 
-    def trade_x(self, dx: D, mock: bool = False) -> Optional[D]:
+    def trade_x(self, dx: D) -> Optional[D]:
         """Proposition 11. Trade a given amount of x for y.
 
         Returns: amount dy redeemed / to be paid. Without fees.
@@ -300,26 +303,20 @@ class CEMM:
         ynew = self._compute_y_for_x(xnew)
         if ynew is None:
             return None
-        if not mock:
-            self.x = xnew
-            yold = self.y
-            self.y = ynew
-        else:
-            yold = self.y
+        self.x = xnew
+        yold = self.y
+        self.y = ynew
         return ynew - yold
 
-    def trade_y(self, dy: D, mock: bool = False) -> Optional[D]:
+    def trade_y(self, dy: D) -> Optional[D]:
         """Proposition 11. Trade a given amount of y for x. Analogous to `trade_y()`."""
         ynew = self.y + dy
         xnew = self._compute_x_for_y(ynew)
         if xnew is None:
             return None
-        if not mock:
-            self.y = ynew
-            xold = self.x
-            self.x = xnew
-        else:
-            xold = self.x
+        self.y = ynew
+        xold = self.x
+        self.x = xnew
         return xnew - xold
 
     def _compute_y_for_x(self, x: D, nomaxvals: bool = False) -> Optional[D]:

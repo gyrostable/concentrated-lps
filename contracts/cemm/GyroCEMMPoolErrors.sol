@@ -10,4 +10,7 @@ library GyroCEMMPoolErrors {
     uint256 internal constant ROTATION_VECTOR_WRONG = 355;
     uint256 internal constant ROTATION_VECTOR_NOT_NORMALIZED = 356;
     uint256 internal constant ASSET_BOUNDS_EXCEEDED = 357;
+    uint256 internal constant DERIVED_TAU_NOT_NORMALIZED = 358;
+    uint256 internal constant DERIVED_ZETA_WRONG = 359;
+    uint256 internal constant STRETCHING_FACTOR_WRONG = 359;
 }
