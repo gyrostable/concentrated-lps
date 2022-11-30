@@ -1,7 +1,9 @@
+# 100-decimal-place (very high precision) version of `cemm.py`.
+
 from dataclasses import dataclass
 
 # noinspection PyPep8Naming
-from tests.support.quantized_decimal import QuantizedDecimal as D
+from tests.support.quantized_decimal_100 import QuantizedDecimal as D
 from functools import cached_property
 from math import cos, sin, pi
 
@@ -9,7 +11,7 @@ from math import cos, sin, pi
 # from dfuzzy import isle, isge
 from typing import Optional
 
-from tests.support.dfuzzy import (
+from tests.support.dfuzzy_100 import (
     isclose,
     prec_sanity_check,
     soft_clamp,

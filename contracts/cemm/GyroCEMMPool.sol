@@ -36,6 +36,11 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
     int256 public immutable _tauAlphaY;
     int256 public immutable _tauBetaX;
     int256 public immutable _tauBetaY;
+    int256 public immutable _u;
+    int256 public immutable _v;
+    int256 public immutable _w;
+    int256 public immutable _z;
+    int256 public immutable _dSq;
 
     IGyroConfig public gyroConfig;
 
@@ -46,7 +51,7 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
     }
 
     constructor(GyroParams memory params, address configAddress) ExtensibleWeightedPool2Tokens(params.baseParams) {
-        GyroCEMMMath.validateParams(params.cemmParams);
+        // GyroCEMMMath.validateParams(params.cemmParams);
         (_paramsAlpha, _paramsBeta, _paramsC, _paramsS, _paramsLambda) = (
             params.cemmParams.alpha,
             params.cemmParams.beta,
@@ -55,16 +60,31 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
             params.cemmParams.lambda
         );
 
-        GyroCEMMMath.DerivedParams memory derived = GyroCEMMMath.mkDerivedParams(params.cemmParams);
-        (_tauAlphaX, _tauAlphaY, _tauBetaX, _tauBetaY) = (derived.tauAlpha.x, derived.tauAlpha.y, derived.tauBeta.x, derived.tauBeta.y);
+        // GyroCEMMMath.validateDerivedParams(params.cemmParams, params.derivedCemmParams);
+        (_tauAlphaX, _tauAlphaY, _tauBetaX, _tauBetaY, _u, _v, _w, _z, _dSq) = (
+            params.derivedCemmParams.tauAlpha.x,
+            params.derivedCemmParams.tauAlpha.y,
+            params.derivedCemmParams.tauBeta.x,
+            params.derivedCemmParams.tauBeta.y,
+            params.derivedCemmParams.u,
+            params.derivedCemmParams.v,
+            params.derivedCemmParams.w,
+            params.derivedCemmParams.z,
+            params.derivedCemmParams.dSq
+        );
 
         gyroConfig = IGyroConfig(configAddress);
     }
 
     /** @dev reconstructs CEMM params structs from immutable arrays */
-    function reconstructCEMMParams() internal view returns (GyroCEMMMath.Params memory params, GyroCEMMMath.DerivedParams memory derived) {
+    function reconstructCEMMParams() internal view returns (GyroCEMMMath.Params memory params, GyroCEMMMath.DerivedParams memory d) {
         (params.alpha, params.beta, params.c, params.s, params.lambda) = (_paramsAlpha, _paramsBeta, _paramsC, _paramsS, _paramsLambda);
-        (derived.tauAlpha.x, derived.tauAlpha.y, derived.tauBeta.x, derived.tauBeta.y) = (_tauAlphaX, _tauAlphaY, _tauBetaX, _tauBetaY);
+        (d.tauAlpha.x, d.tauAlpha.y, d.tauBeta.x, d.tauBeta.y) = (_tauAlphaX, _tauAlphaY, _tauBetaX, _tauBetaY);
+        (d.u, d.v, d.w, d.z, d.dSq) = (_u, _v, _w, _z, _dSq);
+    }
+
+    function getCEMMParams() external view returns (GyroCEMMMath.Params memory params, GyroCEMMMath.DerivedParams memory d) {
+        return reconstructCEMMParams();
     }
 
     /**
@@ -102,10 +122,15 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
         uint256[] memory balances = _balancesFromTokenInOut(balanceTokenIn, balanceTokenOut, tokenInIsToken0);
 
         (GyroCEMMMath.Params memory cemmParams, GyroCEMMMath.DerivedParams memory derivedCEMMParams) = reconstructCEMMParams();
-        uint256 currentInvariant = GyroCEMMMath.calculateInvariant(balances, cemmParams, derivedCEMMParams);
+        GyroCEMMMath.Vector2 memory invariant;
+        {
+            (int256 currentInvariant, int256 invErr) = GyroCEMMMath.calculateInvariantWithError(balances, cemmParams, derivedCEMMParams);
+            // invariant = overestimate in x-component, underestimate in y-component
+            invariant = GyroCEMMMath.Vector2(SignedFixedPoint.add(currentInvariant, 2 * invErr), currentInvariant);
 
-        // Update price oracle with the pre-swap balances. Vs other pools, we need to do this after invariant is calculated
-        _updateOracle(request.lastChangeBlock, balances, currentInvariant, cemmParams, derivedCEMMParams);
+            // Update price oracle with the pre-swap balances. Vs other pools, we need to do this after invariant is calculated
+            _updateOracle(request.lastChangeBlock, balances, currentInvariant.toUint256(), cemmParams, derivedCEMMParams);
+        }
 
         if (request.kind == IVault.SwapKind.GIVEN_IN) {
             // Fees are subtracted before scaling, to reduce the complexity of the rounding direction analysis.
@@ -113,14 +138,14 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
             uint256 feeAmount = request.amount.mulUp(getSwapFeePercentage());
             request.amount = _upscale(request.amount.sub(feeAmount), scalingFactorTokenIn);
 
-            uint256 amountOut = _onSwapGivenIn(request, balances, tokenInIsToken0, cemmParams, derivedCEMMParams, currentInvariant);
+            uint256 amountOut = _onSwapGivenIn(request, balances, tokenInIsToken0, cemmParams, derivedCEMMParams, invariant);
 
             // amountOut tokens are exiting the Pool, so we round down.
             return _downscaleDown(amountOut, scalingFactorTokenOut);
         } else {
             request.amount = _upscale(request.amount, scalingFactorTokenOut);
 
-            uint256 amountIn = _onSwapGivenOut(request, balances, tokenInIsToken0, cemmParams, derivedCEMMParams, currentInvariant);
+            uint256 amountIn = _onSwapGivenOut(request, balances, tokenInIsToken0, cemmParams, derivedCEMMParams, invariant);
 
             // amountIn tokens are entering the Pool, so we round up.
             amountIn = _downscaleUp(amountIn, scalingFactorTokenIn);
@@ -137,10 +162,10 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
         bool tokenInIsToken0,
         GyroCEMMMath.Params memory cemmParams,
         GyroCEMMMath.DerivedParams memory derivedCEMMParams,
-        uint256 invariant
+        GyroCEMMMath.Vector2 memory invariant
     ) private pure returns (uint256) {
         // Swaps are disabled while the contract is paused.
-        return GyroCEMMMath.calcInGivenOut(balances, swapRequest.amount, tokenInIsToken0, cemmParams, derivedCEMMParams, invariant);
+        return GyroCEMMMath.calcOutGivenIn(balances, swapRequest.amount, tokenInIsToken0, cemmParams, derivedCEMMParams, invariant);
     }
 
     function _onSwapGivenOut(
@@ -149,10 +174,10 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
         bool tokenInIsToken0,
         GyroCEMMMath.Params memory cemmParams,
         GyroCEMMMath.DerivedParams memory derivedCEMMParams,
-        uint256 invariant
+        GyroCEMMMath.Vector2 memory invariant
     ) private pure returns (uint256) {
         // Swaps are disabled while the contract is paused.
-        return GyroCEMMMath.calcOutGivenIn(balances, swapRequest.amount, tokenInIsToken0, cemmParams, derivedCEMMParams, invariant);
+        return GyroCEMMMath.calcInGivenOut(balances, swapRequest.amount, tokenInIsToken0, cemmParams, derivedCEMMParams, invariant);
     }
 
     //Note: is public visibility ok for the following function?
@@ -250,7 +275,7 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
         // re-computation.
         // Note: Should this be changed in the future, we also need to reduce the invariant proportionally by the total
         // protocol fee factor.
-        _lastInvariant = GyroCEMMMath.liquidityInvariantUpdate(balances, invariantBeforeAction, amountsIn, true);
+        _lastInvariant = GyroPoolMath.liquidityInvariantUpdate(invariantBeforeAction, bptAmountOut, totalSupply(), true);
 
         // returns a new uint256[](2) b/c Balancer vault is expecting a fee array, but fees paid in BPT instead
         return (bptAmountOut, amountsIn, new uint256[](2));
@@ -341,7 +366,7 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
             // re-computation.
             // Note: Should this be changed in the future, we also need to reduce the invariant proportionally by the total
             // protocol fee factor.
-            _lastInvariant = GyroCEMMMath.liquidityInvariantUpdate(balances, invariantBeforeAction, amountsOut, false);
+            _lastInvariant = GyroPoolMath.liquidityInvariantUpdate(invariantBeforeAction, bptAmountIn, totalSupply(), false);
         } else {
             // Note: If the contract is paused, swap protocol fee amounts are not charged and the oracle is not updated
             // to avoid extra calculations and reduce the potential for errors.
@@ -395,6 +420,7 @@ contract GyroCEMMPool is ExtensibleWeightedPool2Tokens, GyroCEMMOracleMath {
         uint256 balanceTokenOut,
         bool tokenInIsToken0
     ) internal pure returns (uint256[] memory balances) {
+        balances = new uint256[](2);
         if (tokenInIsToken0) {
             balances[0] = balanceTokenIn;
             balances[1] = balanceTokenOut;
