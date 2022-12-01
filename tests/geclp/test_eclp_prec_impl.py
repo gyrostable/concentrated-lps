@@ -18,8 +18,8 @@ from tests.support.util_common import (
     gen_balances,
     gen_balances_vector,
 )
-from tests.cemm import cemm_100 as mimpl
-from tests.cemm import cemm_prec_implementation as prec_impl
+from tests.geclp import eclp_100 as mimpl
+from tests.geclp import eclp_prec_implementation as prec_impl
 from tests.support.quantized_decimal_100 import QuantizedDecimal as D3
 from tests.support.types import *
 from tests.support.utils import scale, to_decimal, qdecimals, unscale, apply_deep
@@ -64,19 +64,19 @@ def convd(x, totype, dofloat=True, dostr=True):
     return apply_deep(x, go)
 
 
-def paramsTo100(params: CEMMMathParams) -> CEMMMathParams:
+def paramsTo100(params: ECLPMathParams) -> ECLPMathParams:
     """Convert params to a high-precision version. This is more than just type conversion, we also re-normalize!"""
     params = convd(params, D3)
     pd = params._asdict()
     d = (params.s**2 + params.c**2).sqrt()
     pd["s"] /= d
     pd["c"] /= d
-    return CEMMMathParams(**pd)
+    return ECLPMathParams(**pd)
 
 
-def params2MathParams(params: CEMMMathParams) -> mimpl.Params:
-    """Map 100-decimal CEMMMathParams to 100-decimal mimpl.Params.
-    This is equal to .util.params2MathParams() but has to be re-written to use the right cemm impl module."""
+def params2MathParams(params: ECLPMathParams) -> mimpl.Params:
+    """Map 100-decimal ECLPMathParams to 100-decimal mimpl.Params.
+    This is equal to .util.params2MathParams() but has to be re-written to use the right geclp impl module."""
     return mimpl.Params(params.alpha, params.beta, params.c, -params.s, params.l)
 
 
@@ -117,8 +117,8 @@ def gen_params(draw):
 
     s = sin(phi)
     c = cos(phi)
-    l = draw(qdecimals(min_value="1", max_value="1e8", places=3))
-    return CEMMMathParams(alpha, beta, D(c), D(s), l)
+    l = draw(qdecimals(min_value="1", max_value="1e8"))
+    return ECLPMathParams(alpha, beta, D(c), D(s), l)
 
 
 @st.composite
@@ -140,10 +140,10 @@ def gen_params_conservative(draw):
     s = sin(phi)
     c = cos(phi)
     l = draw(qdecimals("1", "10"))
-    return CEMMMathParams(alpha, beta, D(c), D(s), l)
+    return ECLPMathParams(alpha, beta, D(c), D(s), l)
 
 
-# def params2MathParams(params: CEMMMathParams) -> mimpl.Params:
+# def params2MathParams(params: ECLPMathParams) -> mimpl.Params:
 #     """The python math implementation is a bit older and uses its own data structures. This function converts."""
 #     c, s = convert_deep_decimals([D(params.c), D(params.s)], D3)
 #     # c, s = (D3(D(params.c).raw), D3(D(params.s).raw))
@@ -154,7 +154,7 @@ def gen_params_conservative(draw):
 
 ######################################################################################
 # @given(params=gen_params())
-# def test_calcAChiAChi(gyro_cemm_math_testing, params):
+# def test_calcAChiAChi(gyro_eclp_math_testing, params):
 #     mparams = params2MathParams(paramsTo100(params))
 #     derived_m = mparams  # Legacy fix
 
@@ -162,11 +162,11 @@ def gen_params_conservative(draw):
 #     derived_scaled = prec_impl.scale_derived_values(derived)
 
 #     result_py = prec_impl.calcAChiAChi(params, derived)
-#     result_sol = gyro_cemm_math_testing.calcAChiAChi(scale(params), derived_scaled)
+#     result_sol = gyro_eclp_math_testing.calcAChiAChi(scale(params), derived_scaled)
 #     assert result_py == unscale(result_sol)
 #     assert result_py > 1
 
-#     # test against the old (imprecise) implementation
+#     # test against the old implementation w/ very high precision
 #     chi = (
 #         mparams.Ainv_times(derived_m.tauBeta[0], derived_m.tauBeta[1])[0],
 #         mparams.Ainv_times(derived_m.tauAlpha[0], derived_m.tauAlpha[1])[1],
@@ -177,7 +177,7 @@ def gen_params_conservative(draw):
 
 
 @given(params=gen_params())
-def test_calcAChiAChiInXp(gyro_cemm_math_testing, params):
+def test_calcAChiAChiInXp(gyro_eclp_math_testing, params):
     mparams = params2MathParams(paramsTo100(params))
     derived_m = mparams  # Legacy fix
 
@@ -185,11 +185,11 @@ def test_calcAChiAChiInXp(gyro_cemm_math_testing, params):
     derived_scaled = prec_impl.scale_derived_values(derived)
 
     result_py = prec_impl.calcAChiAChiInXp(params, derived)
-    result_sol = gyro_cemm_math_testing.calcAChiAChiInXp(scale(params), derived_scaled)
+    result_sol = gyro_eclp_math_testing.calcAChiAChiInXp(scale(params), derived_scaled)
     assert result_py == D2((D3(result_sol) / D3("1e38")).raw)
     assert result_py > 1
 
-    # test against the old (imprecise) implementation
+    # test against the old implementation w/ very high precision
     chi = (
         mparams.Ainv_times(derived_m.tauBeta[0], derived_m.tauBeta[1])[0],
         mparams.Ainv_times(derived_m.tauAlpha[0], derived_m.tauAlpha[1])[1],
@@ -205,11 +205,11 @@ def test_calcAChiAChiInXp(gyro_cemm_math_testing, params):
     params=gen_params(),
     balances=gen_balances(2, bpool_params),
 )
-def test_calcAtAChi(gyro_cemm_math_testing, params, balances):
+def test_calcAtAChi(gyro_eclp_math_testing, params, balances):
     derived = prec_impl.calc_derived_values(params)
     derived_scaled = prec_impl.scale_derived_values(derived)
     result_py = prec_impl.calcAtAChi(balances[0], balances[1], params, derived)
-    result_sol = gyro_cemm_math_testing.calcAtAChi(
+    result_sol = gyro_eclp_math_testing.calcAtAChi(
         scale(balances[0]),
         scale(balances[1]),
         scale(params),
@@ -229,7 +229,7 @@ def test_calcAtAChi_sense_check(params, balances):
     derived = prec_impl.calc_derived_values(params)
     result_py = prec_impl.calcAtAChi(balances[0], balances[1], params, derived)
 
-    # test against the old (imprecise) implementation
+    # test against the old implementation w/ very high precision
     At = mparams.A_times(*convd((balances[0], balances[1]), D3))
     chi = (
         mparams.Ainv_times(derived_m.tauBeta[0], derived_m.tauBeta[1])[0],
@@ -244,13 +244,13 @@ def test_calcAtAChi_sense_check(params, balances):
     params=gen_params(),
     balances=gen_balances(2, bpool_params),
 )
-def test_calcMinAtxAChiySqPlusAtxSq(gyro_cemm_math_testing, params, balances):
+def test_calcMinAtxAChiySqPlusAtxSq(gyro_eclp_math_testing, params, balances):
     derived = prec_impl.calc_derived_values(params)
     derived_scaled = prec_impl.scale_derived_values(derived)
     result_py = prec_impl.calcMinAtxAChiySqPlusAtxSq(
         balances[0], balances[1], params, derived
     )
-    result_sol = gyro_cemm_math_testing.calcMinAtxAChiySqPlusAtxSq(
+    result_sol = gyro_eclp_math_testing.calcMinAtxAChiySqPlusAtxSq(
         scale(balances[0]), scale(balances[1]), scale(params), derived_scaled
     )
     assert result_py == unscale(result_sol)
@@ -268,7 +268,7 @@ def test_calcMinAtxAChiySqPlusAtxSq_sense_check(params, balances):
     result_py = prec_impl.calcMinAtxAChiySqPlusAtxSq(
         balances[0], balances[1], params, derived
     )
-    # test against the old (imprecise) implementation
+    # test against the old implementation w/ very high precision
     At = mparams.A_times(*convd((balances[0], balances[1]), D3))
     chi = (
         mparams.Ainv_times(derived_m.tauBeta[0], derived_m.tauBeta[1])[0],
@@ -283,14 +283,14 @@ def test_calcMinAtxAChiySqPlusAtxSq_sense_check(params, balances):
     params=gen_params(),
     balances=gen_balances(2, bpool_params),
 )
-def test_calc2AtxAtyAChixAChiy(gyro_cemm_math_testing, params, balances):
+def test_calc2AtxAtyAChixAChiy(gyro_eclp_math_testing, params, balances):
     derived = prec_impl.calc_derived_values(params)
     derived_scaled = prec_impl.scale_derived_values(derived)
 
     result_py = prec_impl.calc2AtxAtyAChixAChiy(
         balances[0], balances[1], params, derived
     )
-    result_sol = gyro_cemm_math_testing.calc2AtxAtyAChixAChiy(
+    result_sol = gyro_eclp_math_testing.calc2AtxAtyAChixAChiy(
         scale(balances[0]), scale(balances[1]), scale(params), derived_scaled
     )
     assert result_py == unscale(result_sol)
@@ -308,7 +308,7 @@ def test_calc2AtxAtyAChixAChiy_sense_check(params, balances):
     result_py = prec_impl.calc2AtxAtyAChixAChiy(
         balances[0], balances[1], params, derived
     )
-    # test against the old (imprecise) implementation
+    # test against the old implementation w/ very high precision
     At = mparams.A_times(*convd((balances[0], balances[1]), D3))
     chi = (
         mparams.Ainv_times(derived_m.tauBeta[0], derived_m.tauBeta[1])[0],
@@ -323,13 +323,13 @@ def test_calc2AtxAtyAChixAChiy_sense_check(params, balances):
     params=gen_params(),
     balances=gen_balances(2, bpool_params),
 )
-def test_calcMinAtyAChixSqPlusAtySq(gyro_cemm_math_testing, params, balances):
+def test_calcMinAtyAChixSqPlusAtySq(gyro_eclp_math_testing, params, balances):
     derived = prec_impl.calc_derived_values(params)
     derived_scaled = prec_impl.scale_derived_values(derived)
     result_py = prec_impl.calcMinAtyAChixSqPlusAtySq(
         balances[0], balances[1], params, derived
     )
-    result_sol = gyro_cemm_math_testing.calcMinAtyAChixSqPlusAtySq(
+    result_sol = gyro_eclp_math_testing.calcMinAtyAChixSqPlusAtySq(
         scale(balances[0]), scale(balances[1]), scale(params), derived_scaled
     )
     assert result_py == unscale(result_sol)
@@ -347,7 +347,7 @@ def test_calcMinAtyAChixSqPlusAtySq_sense_check(params, balances):
     result_py = prec_impl.calcMinAtyAChixSqPlusAtySq(
         balances[0], balances[1], params, derived
     )
-    # test against the old (imprecise) implementation
+    # test against the old implementation w/ very high precision
     At = mparams.A_times(*convd((balances[0], balances[1]), D3))
     chi = (
         mparams.Ainv_times(derived_m.tauBeta[0], derived_m.tauBeta[1])[0],
@@ -363,7 +363,7 @@ def test_calcMinAtyAChixSqPlusAtySq_sense_check(params, balances):
     balances=gen_balances(2, bpool_params),
 )
 @example(
-    params=CEMMMathParams(
+    params=ECLPMathParams(
         alpha=D("0.050000000000020290"),
         beta=D("0.397316269897841178"),
         c=D("0.869675796261884515"),
@@ -372,13 +372,13 @@ def test_calcMinAtyAChixSqPlusAtySq_sense_check(params, balances):
     ),
     balances=[D("60138484034.385962001000000000"), D("1.404490000000000000")],
 )
-def test_calcInvariantSqrt(gyro_cemm_math_testing, params, balances):
+def test_calcInvariantSqrt(gyro_eclp_math_testing, params, balances):
     derived = prec_impl.calc_derived_values(params)
     derived_scaled = prec_impl.scale_derived_values(derived)
     result_py, err_py = prec_impl.calcInvariantSqrt(
         balances[0], balances[1], params, derived
     )
-    result_sol, err_sol = gyro_cemm_math_testing.calcInvariantSqrt(
+    result_sol, err_sol = gyro_eclp_math_testing.calcInvariantSqrt(
         scale(balances[0]), scale(balances[1]), scale(params), derived_scaled
     )
     assert result_py == unscale(result_sol).approxed(abs=D("5e-18"))  # (rel=D("1e-13"))
@@ -390,7 +390,7 @@ def test_calcInvariantSqrt(gyro_cemm_math_testing, params, balances):
     balances=gen_balances(2, bpool_params),
 )
 @example(
-    params=CEMMMathParams(
+    params=ECLPMathParams(
         alpha=D("0.050000000000020290"),
         beta=D("0.397316269897841178"),
         c=D("0.869675796261884515"),
@@ -399,11 +399,11 @@ def test_calcInvariantSqrt(gyro_cemm_math_testing, params, balances):
     ),
     balances=[D("60138484034.385962001000000000"), D("1.404490000000000000")],
 )
-def test_calculateInvariant(gyro_cemm_math_testing, params, balances):
+def test_calculateInvariant(gyro_eclp_math_testing, params, balances):
     derived = prec_impl.calc_derived_values(params)
     derived_scaled = prec_impl.scale_derived_values(derived)
     result_py, err_py = prec_impl.calculateInvariantWithError(balances, params, derived)
-    result_sol, err_sol = gyro_cemm_math_testing.calculateInvariantWithError(
+    result_sol, err_sol = gyro_eclp_math_testing.calculateInvariantWithError(
         scale(balances), scale(params), derived_scaled
     )
     # denominator = prec_impl.calcAChiAChi(params, derived) - D(1)
@@ -429,10 +429,10 @@ def test_calculateInvariant_sense_check(params, balances):
     assume(denominator > D2("1E-5"))  # if this is not the case, error can blow up
 
     result_py, err_py = prec_impl.calculateInvariantWithError(balances, params, derived)
-    # test against the old (imprecise) implementation
-    cemm = mimpl.CEMM.from_x_y(*convd(balances, D3), mparams)
-    assert convd(cemm.r, D) == result_py.approxed()
-    assert convd(cemm.r, D) == D(result_py + err_py).approxed(abs=D(err_py))
+    # test against the old implementation w/ very high precision
+    eclp = mimpl.ECLP.from_x_y(*convd(balances, D3), mparams)
+    assert convd(eclp.r, D) == result_py.approxed()
+    assert convd(eclp.r, D) == D(result_py + err_py).approxed(abs=D(err_py))
 
 
 @settings(suppress_health_check=[HealthCheck.filter_too_much])
@@ -440,7 +440,7 @@ def test_calculateInvariant_sense_check(params, balances):
     params=gen_params(),
     balances=gen_balances(2, bpool_params),
 )
-def test_calculateInvariant_error_not_too_bad(gyro_cemm_math_testing, params, balances):
+def test_calculateInvariant_error_not_too_bad(gyro_eclp_math_testing, params, balances):
     derived = prec_impl.calc_derived_values(params)
     denominator = prec_impl.calcAChiAChiInXp(params, derived) - D2(1)
     assume(denominator > D2("1E-5"))  # if this is not the case, error can blow up
@@ -452,19 +452,19 @@ def test_calculateInvariant_error_not_too_bad(gyro_cemm_math_testing, params, ba
 
 @given(
     params=gen_params(),
-    invariant=st.decimals(min_value="1e-5", max_value="1e12", places=4),
+    invariant=st.decimals(min_value="1e-5", max_value="1e12"),
 )
-def test_virtualOffsets(gyro_cemm_math_testing, params, invariant):
+def test_virtualOffsets(gyro_eclp_math_testing, params, invariant):
     derived = prec_impl.calc_derived_values(params)
     derived_scaled = prec_impl.scale_derived_values(derived)
 
     r = (prec_impl.invariantOverestimate(invariant), invariant)
     a_py = prec_impl.virtualOffset0(params, derived, r)
     b_py = prec_impl.virtualOffset1(params, derived, r)
-    a_sol = gyro_cemm_math_testing.virtualOffset0(
+    a_sol = gyro_eclp_math_testing.virtualOffset0(
         scale(params), derived_scaled, scale(r)
     )
-    b_sol = gyro_cemm_math_testing.virtualOffset1(
+    b_sol = gyro_eclp_math_testing.virtualOffset1(
         scale(params), derived_scaled, scale(r)
     )
     assert a_py == unscale(a_sol)
@@ -474,7 +474,7 @@ def test_virtualOffsets(gyro_cemm_math_testing, params, invariant):
 @settings(suppress_health_check=[HealthCheck.filter_too_much])
 @given(
     params=gen_params(),
-    invariant=st.decimals(min_value="1e-5", max_value="1e12", places=4),
+    invariant=st.decimals(min_value="1e-5", max_value="1e12"),
 )
 def test_virtualOffsets_sense_check(params, invariant):
     derived = prec_impl.calc_derived_values(params)
@@ -488,16 +488,16 @@ def test_virtualOffsets_sense_check(params, invariant):
     a_py = prec_impl.virtualOffset0(params, derived, r)
     b_py = prec_impl.virtualOffset1(params, derived, r)
 
-    # test against the old (imprecise) implementation
+    # test against the old implementation w/ very high precision
     mparams = params2MathParams(paramsTo100(params))
     midprice = (mparams.alpha + mparams.beta) / D3(2)
-    cemm = mimpl.CEMM.from_px_r(midprice, convd(invariant, D3), mparams)
-    assert a_py == convd(cemm.a, D).approxed(abs=D("1e-17"))
-    assert b_py == convd(cemm.b, D).approxed(abs=D("1e-17"))
+    eclp = mimpl.ECLP.from_px_r(midprice, convd(invariant, D3), mparams)
+    assert a_py == convd(eclp.a, D).approxed(abs=D("1e-17"))
+    assert b_py == convd(eclp.b, D).approxed(abs=D("1e-17"))
 
 
 @given(params=gen_params(), balances=gen_balances(2, bpool_params))
-def test_calcXpXpDivLambdaLambda(gyro_cemm_math_testing, params, balances):
+def test_calcXpXpDivLambdaLambda(gyro_eclp_math_testing, params, balances):
     derived = prec_impl.calc_derived_values(params)
     derived_scaled = prec_impl.scale_derived_values(derived)
 
@@ -507,7 +507,7 @@ def test_calcXpXpDivLambdaLambda(gyro_cemm_math_testing, params, balances):
     XpXp_py = prec_impl.calcXpXpDivLambdaLambda(
         balances[0], r, params.l, params.s, params.c, derived.tauBeta, derived.dSq
     )
-    XpXp_sol = gyro_cemm_math_testing.calcXpXpDivLambdaLambda(
+    XpXp_sol = gyro_eclp_math_testing.calcXpXpDivLambdaLambda(
         scale(balances[0]),
         scale(r),
         scale(params.l),
@@ -565,7 +565,7 @@ def test_calcXpXpDivLambdaLambda_sense_check(params, balances):
 
 
 @given(params=gen_params(), balances=gen_balances(2, bpool_params))
-def test_calcYpYpDivLambdaLambda(gyro_cemm_math_testing, params, balances):
+def test_calcYpYpDivLambdaLambda(gyro_eclp_math_testing, params, balances):
     derived = prec_impl.calc_derived_values(params)
     derived_scaled = prec_impl.scale_derived_values(derived)
 
@@ -577,7 +577,7 @@ def test_calcYpYpDivLambdaLambda(gyro_cemm_math_testing, params, balances):
     YpYp_py = prec_impl.calcXpXpDivLambdaLambda(
         balances[1], r, params.l, params.c, params.s, tau_beta, derived.dSq
     )
-    YpYp_sol = gyro_cemm_math_testing.calcXpXpDivLambdaLambda(
+    YpYp_sol = gyro_eclp_math_testing.calcXpXpDivLambdaLambda(
         scale(balances[1]),
         scale(r),
         scale(params.l),
@@ -637,7 +637,7 @@ def test_calcYpYpDivLambdaLambda_sense_check(params, balances):
 
 @given(params=gen_params(), balances=gen_balances(2, bpool_params))
 @example(
-    params=CEMMMathParams(
+    params=ECLPMathParams(
         alpha=Decimal("0.050000000000000000"),
         beta=Decimal("0.123428886495925482"),
         c=Decimal("0.984807753012208020"),
@@ -646,7 +646,7 @@ def test_calcYpYpDivLambdaLambda_sense_check(params, balances):
     ),
     balances=[1, 1],
 )
-def test_solveQuadraticSwap(gyro_cemm_math_testing, params, balances):
+def test_solveQuadraticSwap(gyro_eclp_math_testing, params, balances):
     derived = prec_impl.calc_derived_values(params)
     derived_scaled = prec_impl.scale_derived_values(derived)
 
@@ -674,7 +674,7 @@ def test_solveQuadraticSwap(gyro_cemm_math_testing, params, balances):
         derived.tauBeta,
         derived.dSq,
     )
-    val_sol = gyro_cemm_math_testing.solveQuadraticSwap(
+    val_sol = gyro_eclp_math_testing.solveQuadraticSwap(
         scale(params.l),
         scale(balances[0]),
         scale(params.s),
@@ -694,7 +694,7 @@ def test_solveQuadraticSwap(gyro_cemm_math_testing, params, balances):
     val_y_py = prec_impl.solveQuadraticSwap(
         params.l, balances[1], params.c, params.s, r, [b, a], tau_beta, derived.dSq
     )
-    val_y_sol = gyro_cemm_math_testing.solveQuadraticSwap(
+    val_y_sol = gyro_eclp_math_testing.solveQuadraticSwap(
         scale(params.l),
         scale(balances[1]),
         scale(params.c),
@@ -710,7 +710,7 @@ def test_solveQuadraticSwap(gyro_cemm_math_testing, params, balances):
     )  # .approxed(abs=error_toly)
 
 
-# note: only test this for conservative parameters b/c old implementation is so imprecise
+# note: this calculation can have some imprecision. We also check that correct rounding direction is achieved, so it's fine
 @settings(suppress_health_check=[HealthCheck.filter_too_much])
 @given(
     params=gen_params(),
@@ -744,30 +744,32 @@ def test_solveQuadraticSwap_sense_check(params, balances):
     )
 
     mparams = params2MathParams(paramsTo100(params))
-    # sense test against old implementation
+    # sense test against old implementation w/ very high precision
     midprice = (mparams.alpha + mparams.beta) / D3(2)
-    cemm = mimpl.CEMM.from_px_r(
+    eclp = mimpl.ECLP.from_px_r(
         midprice, convd(invariant, D3), mparams
     )  # Price doesn't matter.
-    y = cemm._compute_y_for_x(convd(balances[0], D3))
+    y = eclp._compute_y_for_x(convd(balances[0], D3))
     assume(y is not None)  # O/w out of bounds for this invariant
     assume(balances[0] > 0 and y > 0)
-    assert convd(y, D) == val_py.approxed(abs=D("1e-8"))
+    assert convd(y, D) <= val_py
+    assert convd(y, D) == val_py.approxed(abs=D("1e-6"), rel=D("1e-6"))
 
-    # sense test against old implementation
+    # sense test against old implementation w/ very high precision
     midprice = (mparams.alpha + mparams.beta) / D3(2)
-    cemm = mimpl.CEMM.from_px_r(
+    eclp = mimpl.ECLP.from_px_r(
         midprice, convd(invariant, D3), mparams
     )  # Price doesn't matter.
-    x = cemm._compute_x_for_y(convd(balances[1], D3))
+    x = eclp._compute_x_for_y(convd(balances[1], D3))
     assume(x is not None)  # O/w out of bounds for this invariant
     assume(balances[1] > 0 and x > 0)
-    assert convd(x, D) == val_y_py.approxed(abs=D("1e-8"))
+    assert convd(x, D) <= val_y_py
+    assert convd(x, D) == val_y_py.approxed(abs=D("1e-6"), rel=D("1e-6"))
 
 
 # also tests calcXGivenY
 @given(params=gen_params(), balances=gen_balances(2, bpool_params))
-def test_calcYGivenX(gyro_cemm_math_testing, params, balances):
+def test_calcYGivenX(gyro_eclp_math_testing, params, balances):
     derived = prec_impl.calc_derived_values(params)
     derived_scaled = prec_impl.scale_derived_values(derived)
     invariant, err = prec_impl.calculateInvariantWithError(balances, params, derived)
@@ -781,14 +783,14 @@ def test_calcYGivenX(gyro_cemm_math_testing, params, balances):
     # ) * D("5e-13")
 
     y_py = prec_impl.calcYGivenX(balances[0], params, derived, r)
-    y_sol = gyro_cemm_math_testing.calcYGivenX(
+    y_sol = gyro_eclp_math_testing.calcYGivenX(
         scale(balances[0]), scale(params), derived_scaled, scale(r)
     )
     assert y_py <= unscale(y_sol)
     assert y_py == unscale(y_sol).approxed(abs=D("5e-18"))  # .approxed(abs=error_tolx)
 
     x_py = prec_impl.calcXGivenY(balances[1], params, derived, r)
-    x_sol = gyro_cemm_math_testing.calcXGivenY(
+    x_sol = gyro_eclp_math_testing.calcXGivenY(
         scale(balances[1]), scale(params), derived_scaled, scale(r)
     )
     assert x_py <= unscale(x_sol)
@@ -910,27 +912,27 @@ def test_calcYGivenX_sense_check(params, balances):
     mparams = params2MathParams(paramsTo100(params))
     # sense test against old implementation
     midprice = (mparams.alpha + mparams.beta) / D3(2)
-    cemm = mimpl.CEMM.from_px_r(
+    eclp = mimpl.ECLP.from_px_r(
         midprice, convd(invariant, D3), mparams
     )  # Price doesn't matter.
-    y = cemm._compute_y_for_x(convd(balances[0], D3))
+    y = eclp._compute_y_for_x(convd(balances[0], D3))
     assume(y is not None)  # O/w out of bounds for this invariant
     assume(balances[0] > 0 and y > 0)
     assert convd(y, D3) == y_py.approxed(abs=D("1e-8"))
 
     # sense test against old implementation
     midprice = (mparams.alpha + mparams.beta) / D3(2)
-    cemm = mimpl.CEMM.from_px_r(
+    eclp = mimpl.ECLP.from_px_r(
         midprice, convd(invariant, D3), mparams
     )  # Price doesn't matter.
-    x = cemm._compute_x_for_y(convd(balances[1], D3))
+    x = eclp._compute_x_for_y(convd(balances[1], D3))
     assume(x is not None)  # O/w out of bounds for this invariant
     assume(balances[1] > 0 and x > 0)
     assert convd(x, D3) == x_py.approxed(abs=D("1e-8"))
 
 
 @given(params=gen_params(), balances=gen_balances(2, bpool_params))
-def test_maxBalances(gyro_cemm_math_testing, params, balances):
+def test_maxBalances(gyro_eclp_math_testing, params, balances):
     derived = prec_impl.calc_derived_values(params)
     derived_scaled = prec_impl.scale_derived_values(derived)
     invariant, err = prec_impl.calculateInvariantWithError(balances, params, derived)
@@ -938,10 +940,10 @@ def test_maxBalances(gyro_cemm_math_testing, params, balances):
 
     xp_py = prec_impl.maxBalances0(params, derived, r)
     yp_py = prec_impl.maxBalances1(params, derived, r)
-    xp_sol = gyro_cemm_math_testing.maxBalances0(
+    xp_sol = gyro_eclp_math_testing.maxBalances0(
         scale(params), derived_scaled, scale(r)
     )
-    yp_sol = gyro_cemm_math_testing.maxBalances1(
+    yp_sol = gyro_eclp_math_testing.maxBalances1(
         scale(params), derived_scaled, scale(r)
     )
     assert xp_py == unscale(xp_sol)
@@ -965,8 +967,8 @@ def test_maxBalances_sense_check(params, balances):
     # sense test against old implementation
     mparams = params2MathParams(paramsTo100(params))
     midprice = (mparams.alpha + mparams.beta) / D3(2)
-    cemm = mimpl.CEMM.from_px_r(midprice, convd(invariant, D3), mparams)
+    eclp = mimpl.ECLP.from_px_r(midprice, convd(invariant, D3), mparams)
 
     err_tol = D(err) * params.l * 5
-    assert xp_py == convd(cemm.xmax, D3).approxed(abs=err_tol)
-    assert yp_py == convd(cemm.ymax, D3).approxed(abs=err_tol)
+    assert xp_py == convd(eclp.xmax, D3).approxed(abs=err_tol)
+    assert yp_py == convd(eclp.ymax, D3).approxed(abs=err_tol)

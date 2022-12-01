@@ -15,7 +15,7 @@ from brownie.test import given
 from hypothesis import settings, assume, example, HealthCheck
 from hypothesis import strategies as st
 
-from tests.cemm.util import (
+from tests.geclp.util import (
     params2MathParams,
     mathParams2DerivedParams,
     gen_params,
@@ -28,12 +28,12 @@ from tests.support.util_common import (
 )
 from tests.support import quantized_decimal
 from tests.support.quantized_decimal import QuantizedDecimal as D
-from tests.support.types import CEMMMathParams
+from tests.support.types import ECLPMathParams
 from tests.support.utils import qdecimals
 import pytest
 
-from tests.cemm import cemm as mimpl
-from tests.cemm import cemm_float as mimpl_float
+from tests.geclp import eclp as mimpl
+from tests.geclp import eclp_float as mimpl_float
 
 MIN_BALANCE_RATIO = D("1E-5")
 MIN_FEE = D("0.0001")
@@ -89,12 +89,12 @@ def test_derivedParams(params):
 @given(
     params=gen_params(),
     balances=gen_balances(2, bpool_params),
-    amountIn=qdecimals(min_value=1, max_value=1_000_000_000, places=4),
+    amountIn=qdecimals(min_value=1, max_value=1_000_000_000),
     tokenInIsToken0=st.booleans(),
 )
 # The following example yields error ≥ 1E-4.
 @example(
-    params=CEMMMathParams(
+    params=ECLPMathParams(
         alpha=D("0.978987854300000000"),
         beta=D("1.005000000000000000"),
         c=D("0.984807753012208020"),
@@ -111,17 +111,17 @@ def test_calcOutGivenIn(params, balances, amountIn, tokenInIsToken0):
 
     quantized_decimal.set_decimals(18)
     mparams = params2MathParams(params)
-    cemm = mimpl.CEMM.from_x_y(balances[0], balances[1], mparams)
-    r_single = cemm.r
-    f_trade = cemm.trade_x if tokenInIsToken0 else cemm.trade_y
+    eclp = mimpl.ECLP.from_x_y(balances[0], balances[1], mparams)
+    r_single = eclp.r
+    f_trade = eclp.trade_x if tokenInIsToken0 else eclp.trade_y
     mamountOut_single = f_trade(amountIn)
     assume(mamountOut_single is not None)
 
     quantized_decimal.set_decimals(2 * 18)
     mparams = params2MathParams(params)
-    cemm = mimpl.CEMM.from_x_y(balances[0], balances[1], mparams)
-    r_double = cemm.r
-    f_trade = cemm.trade_x if tokenInIsToken0 else cemm.trade_y
+    eclp = mimpl.ECLP.from_x_y(balances[0], balances[1], mparams)
+    r_double = eclp.r
+    f_trade = eclp.trade_x if tokenInIsToken0 else eclp.trade_y
     mamountOut_double = f_trade(amountIn)
     assert mamountOut_double is not None
 
@@ -139,23 +139,23 @@ def test_calcOutGivenIn(params, balances, amountIn, tokenInIsToken0):
 @given(
     params=gen_params(),
     balances=gen_balances(2, bpool_params),
-    amountIn=qdecimals(min_value=1, max_value=1_000_000_000, places=4),
+    amountIn=qdecimals(min_value=1, max_value=1_000_000_000),
     tokenInIsToken0=st.booleans(),
 )
 # @example(
-#     params=CEMMMathParams(alpha=D('10.591992670000000000'), beta=D('10.593727349591836734'), c=D('1.000000000000000000'), s=D('0E-18'), l=D('1.000000000000000000')),
+#     params=ECLPMathParams(alpha=D('10.591992670000000000'), beta=D('10.593727349591836734'), c=D('1.000000000000000000'), s=D('0E-18'), l=D('1.000000000000000000')),
 #     balances=(13849421, 1022),
 #     amountIn=D('1.000000000000000000'),
 #     tokenInIsToken0=False,
 # )
 # @example(
-#     params=CEMMMathParams(alpha=D('3.044920011516668204'), beta=D('3.045020011516668204'), c=D('1'), s=D('0'), l=D('1.000000000000000000')),
+#     params=ECLPMathParams(alpha=D('3.044920011516668204'), beta=D('3.045020011516668204'), c=D('1'), s=D('0'), l=D('1.000000000000000000')),
 #     balances=(327937, 501870798),
 #     amountIn=D('1.000000000000000000'),
 #     tokenInIsToken0=False,
 # )
 # @example(
-#     params=CEMMMathParams(alpha=D('3.044920011516668204'), beta=D('3.045020011516668204'), c=D('0.302739565961017365'), s=D('0.953073320999877183'), l=D('1.000000000000000000')),
+#     params=ECLPMathParams(alpha=D('3.044920011516668204'), beta=D('3.045020011516668204'), c=D('0.302739565961017365'), s=D('0.953073320999877183'), l=D('1.000000000000000000')),
 #     balances=(327937, 501870798),
 #     amountIn=D('1.000000000000000000'),
 #     tokenInIsToken0=False,
@@ -173,14 +173,14 @@ def mtest_invariant_across_calcOutGivenIn(params, balances, amountIn, tokenInIsT
     # quantized_decimal.set_decimals(18 * 2)
 
     mparams = params2MathParams(params)
-    cemm = mimpl.CEMM.from_x_y(balances[0], balances[1], mparams)
-    invariant_before = cemm.r
-    f_trade = cemm.trade_x if tokenInIsToken0 else cemm.trade_y
+    eclp = mimpl.ECLP.from_x_y(balances[0], balances[1], mparams)
+    invariant_before = eclp.r
+    f_trade = eclp.trade_x if tokenInIsToken0 else eclp.trade_y
 
     fees = MIN_FEE * amountIn
     amountIn -= fees
 
-    mamountOut = f_trade(amountIn)  # This changes the state of the cemm but whatever
+    mamountOut = f_trade(amountIn)  # This changes the state of the geclp but whatever
 
     assume(mamountOut is not None)
 
@@ -200,8 +200,8 @@ def mtest_invariant_across_calcOutGivenIn(params, balances, amountIn, tokenInIsT
         and new_balances[1] >= new_balances[0] * MIN_BALANCE_RATIO
     )
 
-    cemm = mimpl.CEMM.from_x_y(new_balances[0], new_balances[1], mparams)
-    invariant_after = cemm.r
+    eclp = mimpl.ECLP.from_x_y(new_balances[0], new_balances[1], mparams)
+    invariant_after = eclp.r
 
     # Losses can be negative or positive; negative means an actual loss.
     losses = calculate_loss(
@@ -236,17 +236,17 @@ def mparams2float(params: mimpl.Params) -> mimpl_float.Params:
 @given(
     params=gen_params(),
     balances=gen_balances(2, bpool_params),
-    amountIn=qdecimals(min_value=1, max_value=1_000_000_000, places=4),
+    amountIn=qdecimals(min_value=1, max_value=1_000_000_000),
     tokenInIsToken0=st.booleans(),
 )
 # @example(
-#     params=CEMMMathParams(alpha=D('0.050000000000000000'), beta=D('1.005000000000000000'), c=D('0.984807753012208020'), s=D('0.173648177666930331'), l=D('1.000000000000000000')),
+#     params=ECLPMathParams(alpha=D('0.050000000000000000'), beta=D('1.005000000000000000'), c=D('0.984807753012208020'), s=D('0.173648177666930331'), l=D('1.000000000000000000')),
 #     balances=(2, 1),
 #     amountIn=D('1.000000000000000000'),
 #     tokenInIsToken0=False,
 # )
 # @example(
-#     params=CEMMMathParams(alpha=D('10.591992670000000000'), beta=D('10.593727349591836734'), c=D('1.000000000000000000'), s=D('0E-18'), l=D('1.000000000000000000')),
+#     params=ECLPMathParams(alpha=D('10.591992670000000000'), beta=D('10.593727349591836734'), c=D('1.000000000000000000'), s=D('0E-18'), l=D('1.000000000000000000')),
 #     balances=(13849421, 1022),
 #     amountIn=D('1.000000000000000000'),
 #     tokenInIsToken0=False,
@@ -261,14 +261,14 @@ def test_invariant_across_calcOutGivenIn_float(
     amountIn = float(amountIn)
 
     mparams = mparams2float(params2MathParams(params))
-    cemm = mimpl_float.CEMM.from_x_y(balances[0], balances[1], mparams)
-    invariant_before = cemm.r
-    f_trade = cemm.trade_x if tokenInIsToken0 else cemm.trade_y
+    eclp = mimpl_float.ECLP.from_x_y(balances[0], balances[1], mparams)
+    invariant_before = eclp.r
+    f_trade = eclp.trade_x if tokenInIsToken0 else eclp.trade_y
 
     fees = float(MIN_FEE) * amountIn
     amountIn -= fees
 
-    mamountOut = f_trade(amountIn)  # This changes the state of the cemm but whatever
+    mamountOut = f_trade(amountIn)  # This changes the state of the geclp but whatever
 
     assume(mamountOut is not None)
 
@@ -288,8 +288,8 @@ def test_invariant_across_calcOutGivenIn_float(
         and new_balances[1] >= new_balances[0] * float(MIN_BALANCE_RATIO)
     )
 
-    cemm = mimpl_float.CEMM.from_x_y(new_balances[0], new_balances[1], mparams)
-    invariant_after = cemm.r
+    eclp = mimpl_float.ECLP.from_x_y(new_balances[0], new_balances[1], mparams)
+    invariant_after = eclp.r
 
     losses = calculate_loss(
         invariant_after - invariant_before, invariant_after, new_balances
@@ -313,7 +313,7 @@ if __name__ == "__main__":
         # quantized_decimal.set_decimals(2 * 18)
         test_invariant_across_calcOutGivenIn()
         # err = mtest_invariant_across_calcOutGivenIn(
-        #     params=CEMMMathParams(alpha=D('3.044920011516668204'), beta=D('3.045020011516668204'), c=D('1'), s=D('0'),
+        #     params=ECLPMathParams(alpha=D('3.044920011516668204'), beta=D('3.045020011516668204'), c=D('1'), s=D('0'),
         #                           l=D('1.000000000000000000')),
         #     balances=(327937, 501870798),
         #     amountIn=D('1.000000000000000000'),
@@ -321,7 +321,7 @@ if __name__ == "__main__":
         # )  # Passes
         # print(err)
         # err = mtest_invariant_across_calcOutGivenIn(
-        #     params=CEMMMathParams(alpha=D('3.044920011516668204'), beta=D('3.045020011516668204'),
+        #     params=ECLPMathParams(alpha=D('3.044920011516668204'), beta=D('3.045020011516668204'),
         #                           c=D('0.302739565961017365'), s=D('0.953073320999877183'),
         #                           l=D('1.000000000000000000')),
         #     balances=(327937, 501870798),

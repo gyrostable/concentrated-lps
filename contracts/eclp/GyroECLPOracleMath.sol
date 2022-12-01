@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: LicenseRef-Gyro-1.0
 // for information on licensing please see the README in the GitHub repository <https://github.com/gyrostable/concentrated-lps>.
 
-pragma solidity ^0.7.0;
+pragma solidity 0.7.6;
 
-import "@balancer-labs/v2-solidity-utils/contracts/math/FixedPoint.sol";
+// import "@balancer-labs/v2-solidity-utils/contracts/math/FixedPoint.sol";
+import "../../libraries/GyroFixedPoint.sol";
 import "@balancer-labs/v2-solidity-utils/contracts/helpers/LogCompression.sol";
 
-contract GyroCEMMOracleMath {
-    using FixedPoint for uint256;
+library GyroECLPOracleMath {
+    using GyroFixedPoint for uint256;
 
     /**
      * @dev Calculates the logarithm of the spot price of token B in token A.

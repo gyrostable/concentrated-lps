@@ -1,7 +1,10 @@
+# Floating-point version of the ECLP implementation
+
 from dataclasses import dataclass
 
 # noinspection PyPep8Naming
-from tests.support.quantized_decimal import QuantizedDecimal as D
+D = float
+
 from functools import cached_property
 from math import cos, sin, pi
 
@@ -9,18 +12,13 @@ from math import cos, sin, pi
 # from dfuzzy import isle, isge
 from typing import Optional
 
-from tests.support.dfuzzy import (
+from tests.support.dfuzzy_float import (
     isclose,
     prec_sanity_check,
     soft_clamp,
     sqrt,
     prec_input,
 )
-
-##################################################################################################################
-### Note this is an old implementation with low precision, see cemm_prec_implementation for new implementation ###
-##################################################################################################################
-
 
 Vector = tuple[
     D, D
@@ -114,38 +112,28 @@ class Params:
     def tau_beta(self) -> Vector:
         return self.tau(self.beta)
 
-    # Aliases to make this duck-compatible with 'DerivedParams' from cemm_prec_implementation.py as long as only the
-    # tau values are accessed.
-    @property
-    def tauAlpha(self) -> Vector:
-        return self.tau_alpha
-
-    @property
-    def tauBeta(self) -> Vector:
-        return self.tau_beta
-
     def Ainv_times(self, x: D, y: D) -> Vector:
         """A^{-1} . (x, y), where '.' is matrix-vector multiplication and A is the transformation matrix."""
-        retx = x * self.l * self.c + self.s * y
-        rety = -x * self.l * self.s + self.c * y
+        retx = self.c * self.l * x + self.s * y
+        rety = -self.s * self.l * x + self.c * y
         return retx, rety
 
     # x and y coordinates of the above. These could be inlined in the final implementation.
     def Ainv_times_x(self, x: D, y: D) -> D:
-        return x * self.l * self.c + self.s * y
+        return self.c * self.l * x + self.s * y
 
     def Ainv_times_y(self, x: D, y: D) -> D:
-        return -x * self.l * self.s + self.c * y
+        return -self.s * self.l * x + self.c * y
 
     def A_times(self, x: D, y: D) -> Vector:
         """A . (x, y)."""
-        retx = self.c * x / self.l - self.s * y / self.l
+        retx = self.c / self.l * x - self.s / self.l * y
         rety = self.s * x + self.c * y
         return retx, rety
 
     # x and y coordinates
     def A_times_x(self, x: D, y: D) -> D:
-        return self.c * x / self.l - self.s * y / self.l
+        return self.c / self.l * x - self.s / self.l * y
 
     def A_times_y(self, x: D, y: D) -> D:
         return self.s * x + self.c * y
@@ -161,7 +149,7 @@ def scalarprod(x1: D, y1: D, x2: D, y2: D) -> D:
 
 
 @dataclass  # Mainly to get automatic repr()
-class CEMM:
+class ECLP:
     params: Params
     x: D
     y: D
@@ -180,7 +168,7 @@ class CEMM:
         """Initialize from real reserves x, y.
 
         Proposition 12."""
-        ret = CEMM(params)
+        ret = ECLP(params)
         ret.x = x
         ret.y = y
         at: Vector = params.A_times(x, y)
@@ -206,7 +194,7 @@ class CEMM:
         # assert params.alpha <= px <= params.beta
         px = soft_clamp(px, params.alpha, params.beta, prec_input)
 
-        ret = CEMM(params)
+        ret = ECLP(params)
         ret.r = r
         taupx: Vector = params.tau(
             px
@@ -232,7 +220,7 @@ class CEMM:
         xn = params.Ainv_times_x(*params.tau_beta) - params.Ainv_times_x(*taupx)
         yn = params.Ainv_times_y(*params.tau_alpha) - params.Ainv_times_y(*taupx)
         r = v / (px * xn + yn)
-        return CEMM.from_px_r(px, r, params)
+        return ECLP.from_px_r(px, r, params)
 
     # Offsets. Note that, in contrast to (say) virtual reserve offsets, these are *subtracted* from the real reserve.
     # Equivalently, we shift the curve up-right rather than down-left.
@@ -303,7 +291,7 @@ class CEMM:
         xpp, ypp = self.params.A_times(self.x - self.a, self.y - self.b)
         return xpp**2 + ypp**2, self.r**2
 
-    def trade_x(self, dx: D, mock: bool = False) -> Optional[D]:
+    def trade_x(self, dx: D) -> Optional[D]:
         """Proposition 11. Trade a given amount of x for y.
 
         Returns: amount dy redeemed / to be paid. Without fees.
@@ -315,26 +303,20 @@ class CEMM:
         ynew = self._compute_y_for_x(xnew)
         if ynew is None:
             return None
-        if not mock:
-            self.x = xnew
-            yold = self.y
-            self.y = ynew
-        else:
-            yold = self.y
+        self.x = xnew
+        yold = self.y
+        self.y = ynew
         return ynew - yold
 
-    def trade_y(self, dy: D, mock: bool = False) -> Optional[D]:
+    def trade_y(self, dy: D) -> Optional[D]:
         """Proposition 11. Trade a given amount of y for x. Analogous to `trade_y()`."""
         ynew = self.y + dy
         xnew = self._compute_x_for_y(ynew)
         if xnew is None:
             return None
-        if not mock:
-            self.y = ynew
-            xold = self.x
-            self.x = xnew
-        else:
-            xold = self.x
+        self.y = ynew
+        xold = self.x
+        self.x = xnew
         return xnew - xold
 
     def _compute_y_for_x(self, x: D, nomaxvals: bool = False) -> Optional[D]:
@@ -420,7 +402,7 @@ class CEMM:
             self.y += dy
         return dx, dy
 
-    def assert_isclose_to(self, mm, prec: D):  # mm: CEMM
+    def assert_isclose_to(self, mm, prec: D):  # mm: ECLP
         assert (
             isclose(self.x, mm.x, prec)
             and isclose(self.y, mm.y, prec)
@@ -428,7 +410,7 @@ class CEMM:
         )
 
 
-def mtest_rebuild_r(mm: CEMM):
-    mm1 = CEMM.from_x_y(mm.x, mm.y, mm.params)
+def mtest_rebuild_r(mm: ECLP):
+    mm1 = ECLP.from_x_y(mm.x, mm.y, mm.params)
     print(mm.r, mm1.r)
     assert isclose(mm.r, mm1.r, prec_sanity_check)

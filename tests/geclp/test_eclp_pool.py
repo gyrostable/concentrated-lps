@@ -3,19 +3,19 @@ from operator import sub, add
 import pytest
 from brownie import ZERO_ADDRESS
 
-from tests.cemm.util import params2MathParams
+from tests.geclp.util import params2MathParams
 from tests.conftest import TOKENS_PER_USER
-from tests.cpmmv2 import constants
+from tests.g2clp import constants
 from tests.support.types import (
     CallJoinPoolGyroParams,
     SwapKind,
     SwapRequest,
-    CEMMMathParams,
+    ECLPMathParams,
 )
 from tests.support.utils import approxed, unscale, to_decimal
 
-from tests.cemm import cemm as math_implementation
-from tests.cemm import cemm_prec_implementation as prec_impl
+from tests.geclp import eclp as math_implementation
+from tests.geclp import eclp_prec_implementation as prec_impl
 
 
 def test_empty_erc20s(admin, gyro_erc20_empty):
@@ -34,8 +34,8 @@ def test_funded_erc20s(users, gyro_erc20_funded):
             assert gyro_erc20_funded[token].balanceOf(users[user]) == TOKENS_PER_USER
 
 
-def test_pool_reg(mock_vault, cemm_pool, gyro_erc20_funded):
-    poolId = cemm_pool.getPoolId()
+def test_pool_reg(mock_vault, eclp_pool, gyro_erc20_funded):
+    poolId = eclp_pool.getPoolId()
     print("Pool ID", poolId)
 
     # Check pool and token registration
@@ -46,9 +46,9 @@ def test_pool_reg(mock_vault, cemm_pool, gyro_erc20_funded):
         assert token_balances[token] == 0
 
 
-# def test_pool_constructor(cemm_pool):
-#     assert cemm_pool.getSwapFeePercentage() == 1 * 10**15
-#     assert cemm_pool.getNormalizedWeights() == (0.6 * 10**18, 0.4 * 10**18)
+# def test_pool_constructor(eclp_pool):
+#     assert eclp_pool.getSwapFeePercentage() == 1 * 10**15
+#     assert eclp_pool.getNormalizedWeights() == (0.6 * 10**18, 0.4 * 10**18)
 
 
 def join_pool(
@@ -80,13 +80,13 @@ def join_pool(
     )
 
 
-def test_pool_on_initialize(users, cemm_pool, mock_vault):
+def test_pool_on_initialize(users, eclp_pool, mock_vault):
     balances = (0, 0)
     amountIn = 100 * 10**18
 
-    tx = join_pool(mock_vault, cemm_pool.address, users[0], balances, amountIn)
+    tx = join_pool(mock_vault, eclp_pool.address, users[0], balances, amountIn)
 
-    poolId = cemm_pool.getPoolId()
+    poolId = eclp_pool.getPoolId()
 
     # Check Pool balance change
     assert tx.events["PoolBalanceChanged"]["poolId"] == poolId
@@ -107,27 +107,39 @@ def test_pool_on_initialize(users, cemm_pool, mock_vault):
     assert initial_balances[1] == amountIn
 
 
-def test_pool_on_join(users, cemm_pool, mock_vault, gyro_cemm_math_testing):
+def test_pool_view_methods(users, eclp_pool, mock_vault):
+    balances = (0, 0)
+    amountIn = 100 * 10**18
+
+    tx = join_pool(mock_vault, eclp_pool.address, users[0], balances, amountIn)
+
+    eclp_params = eclp_pool.getECLPParams()
+    # Not testing anything here.
+
+    # SOMEDAY when new view methods are added, these should be tested here.
+
+
+def test_pool_on_join(users, eclp_pool, mock_vault, gyro_eclp_math_testing):
     amount_in = 100 * 10**18
 
-    tx = join_pool(mock_vault, cemm_pool.address, users[0], (0, 0), amount_in)
+    tx = join_pool(mock_vault, eclp_pool.address, users[0], (0, 0), amount_in)
 
     initial_bpt_tokens = tx.events["Transfer"][1]["value"]
 
-    sparams, sdparams = cemm_pool.getCEMMParams()
+    sparams, sdparams = eclp_pool.getECLPParams()
 
     # Check pool's invariant after initialization
-    currentInvariant = cemm_pool.getLastInvariant()
+    currentInvariant = eclp_pool.getLastInvariant()
 
     balancesBeforeJoin = [amount_in, amount_in]
-    bptSupplyBeforeJoin = cemm_pool.totalSupply()
-    sInvariant = gyro_cemm_math_testing.calculateInvariant(
+    bptSupplyBeforeJoin = eclp_pool.totalSupply()
+    sInvariant = gyro_eclp_math_testing.calculateInvariant(
         balancesBeforeJoin, sparams, sdparams
     )
 
     assert currentInvariant == sInvariant
 
-    poolId = cemm_pool.getPoolId()
+    poolId = eclp_pool.getPoolId()
     (_, initial_balances) = mock_vault.getPoolTokens(poolId)
 
     ##################################################
@@ -135,11 +147,11 @@ def test_pool_on_join(users, cemm_pool, mock_vault, gyro_cemm_math_testing):
     ##################################################
     tx = join_pool(
         mock_vault,
-        cemm_pool.address,
+        eclp_pool.address,
         users[1],
         initial_balances,
         amount_in,
-        amount_out=cemm_pool.totalSupply(),
+        amount_out=eclp_pool.totalSupply(),
     )
 
     ## Check Pool balance Change
@@ -165,12 +177,12 @@ def test_pool_on_join(users, cemm_pool, mock_vault, gyro_cemm_math_testing):
     )  # sanity check
 
     ## Check new pool's invariant
-    newInvariant = cemm_pool.getLastInvariant()
+    newInvariant = eclp_pool.getLastInvariant()
     assert newInvariant > currentInvariant
 
     currentInvariant = newInvariant
 
-    sInvariant = gyro_cemm_math_testing.liquidityInvariantUpdate(
+    sInvariant = gyro_eclp_math_testing.liquidityInvariantUpdate(
         sInvariant,
         bptSupplyBeforeJoin,
         bptSupplyBeforeJoin,
@@ -180,32 +192,32 @@ def test_pool_on_join(users, cemm_pool, mock_vault, gyro_cemm_math_testing):
     assert currentInvariant == sInvariant
 
 
-def test_pool_on_exit(users, cemm_pool, mock_vault, gyro_cemm_math_testing):
+def test_pool_on_exit(users, eclp_pool, mock_vault, gyro_eclp_math_testing):
     amount_in = 100 * 10**18
 
-    tx = join_pool(mock_vault, cemm_pool.address, users[0], (0, 0), amount_in)
+    tx = join_pool(mock_vault, eclp_pool.address, users[0], (0, 0), amount_in)
 
-    poolId = cemm_pool.getPoolId()
+    poolId = eclp_pool.getPoolId()
     (_, initial_balances) = mock_vault.getPoolTokens(poolId)
     tx = join_pool(
         mock_vault,
-        cemm_pool.address,
+        eclp_pool.address,
         users[1],
         initial_balances,
         amount_in,
-        amount_out=cemm_pool.totalSupply(),
+        amount_out=eclp_pool.totalSupply(),
     )
 
     amountOut = 5 * 10**18
 
-    total_supply_before_exit = cemm_pool.totalSupply()
+    total_supply_before_exit = eclp_pool.totalSupply()
     (_, balances_after_join) = mock_vault.getPoolTokens(poolId)
 
-    invariant_after_join = cemm_pool.getLastInvariant()
+    invariant_after_join = eclp_pool.getLastInvariant()
 
-    bptTokensToBurn = cemm_pool.balanceOf(users[0]) * amountOut // amount_in
+    bptTokensToBurn = eclp_pool.balanceOf(users[0]) * amountOut // amount_in
     tx = mock_vault.callExitPoolGyro(
-        cemm_pool.address,
+        eclp_pool.address,
         0,
         users[0],
         users[0],
@@ -238,40 +250,40 @@ def test_pool_on_exit(users, cemm_pool, mock_vault, gyro_cemm_math_testing):
     )
     assert bptTokensburnt == bptTokensToBurn
 
-    sparams, sdparams = cemm_pool.getCEMMParams()
+    sparams, sdparams = eclp_pool.getECLPParams()
 
     ## Check new pool's invariant
-    invariant_after_exit = cemm_pool.getLastInvariant()
+    invariant_after_exit = eclp_pool.getLastInvariant()
     assert invariant_after_join > invariant_after_exit
 
     # This is the value used in _onExitPool(): The invariant is recalculated each time.
     # B/c recalculation isn't perfectly precise, we only match the stored value approximately.
-    sInvariant_after_join = gyro_cemm_math_testing.calculateInvariant(
+    sInvariant_after_join = gyro_eclp_math_testing.calculateInvariant(
         balances_after_join, sparams, sdparams
     )
     assert unscale(sInvariant_after_join) == unscale(invariant_after_join).approxed()
 
-    sInvariant_after_exit = gyro_cemm_math_testing.liquidityInvariantUpdate(
+    sInvariant_after_exit = gyro_eclp_math_testing.liquidityInvariantUpdate(
         sInvariant_after_join, bptTokensToBurn, total_supply_before_exit, False
     )
 
     assert invariant_after_exit == sInvariant_after_exit
 
 
-def test_pool_swap(users, cemm_pool, mock_vault, gyro_erc20_funded):
+def test_pool_swap(users, eclp_pool, mock_vault, gyro_erc20_funded):
     amount_in = 100 * 10**18
 
-    tx = join_pool(mock_vault, cemm_pool.address, users[0], (0, 0), amount_in)
+    tx = join_pool(mock_vault, eclp_pool.address, users[0], (0, 0), amount_in)
 
-    poolId = cemm_pool.getPoolId()
+    poolId = eclp_pool.getPoolId()
     (_, initial_balances) = mock_vault.getPoolTokens(poolId)
     tx = join_pool(
         mock_vault,
-        cemm_pool.address,
+        eclp_pool.address,
         users[1],
         initial_balances,
         amount_in,
-        amount_out=cemm_pool.totalSupply(),
+        amount_out=eclp_pool.totalSupply(),
     )
 
     amount_out = 5 * 10**18
@@ -279,14 +291,14 @@ def test_pool_swap(users, cemm_pool, mock_vault, gyro_erc20_funded):
     (_, balances_after_join) = mock_vault.getPoolTokens(poolId)
 
     tx = mock_vault.callExitPoolGyro(
-        cemm_pool.address,
+        eclp_pool.address,
         0,
         users[0],
         users[0],
         balances_after_join,
         0,
         0,
-        cemm_pool.balanceOf(users[0]) * amount_out // amount_in,
+        eclp_pool.balanceOf(users[0]) * amount_out // amount_in,
     )
 
     (_, balances_after_exit) = mock_vault.getPoolTokens(poolId)
@@ -296,10 +308,10 @@ def test_pool_swap(users, cemm_pool, mock_vault, gyro_erc20_funded):
     fees = amount_to_swap * (to_decimal("0.1") / 100)
     amountToSwapMinusFees = amount_to_swap - fees
 
-    sparams, _ = cemm_pool.getCEMMParams()
-    mparams = params2MathParams(CEMMMathParams(*unscale(sparams)))
-    cemm = math_implementation.CEMM.from_x_y(*unscale(balances_after_exit), mparams)
-    amount_out_expected = -cemm.trade_x(unscale(amountToSwapMinusFees), mock=True)
+    sparams, _ = eclp_pool.getECLPParams()
+    mparams = params2MathParams(ECLPMathParams(*unscale(sparams)))
+    eclp = math_implementation.ECLP.from_x_y(*unscale(balances_after_exit), mparams)
+    amount_out_expected = -eclp.trade_x(unscale(amountToSwapMinusFees), mock=True)
 
     swapRequest = SwapRequest(
         kind=SwapKind.GivenIn,  # SwapKind - GIVEN_IN
@@ -314,7 +326,7 @@ def test_pool_swap(users, cemm_pool, mock_vault, gyro_erc20_funded):
     )
 
     tx = mock_vault.callMinimalGyroPoolSwap(
-        cemm_pool.address,
+        eclp_pool.address,
         swapRequest,
         balances_after_exit[0],
         balances_after_exit[1],

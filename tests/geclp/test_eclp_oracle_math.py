@@ -8,7 +8,7 @@ from _pytest.python_api import ApproxDecimal
 from brownie.test import given
 from brownie import reverts
 from hypothesis import assume, settings
-from tests.cemm import cemm as mimpl
+from tests.geclp import eclp as mimpl
 from tests.support.utils import scale, to_decimal, qdecimals, unscale
 from tests.support.types import *
 from tests.support.quantized_decimal import QuantizedDecimal as D
@@ -33,9 +33,9 @@ def gen_balances():
 @given(
     spot_price=price_strategy,
 )
-def test_log_spot_price(gyro_cemm_oracle_math_testing, spot_price):
+def test_log_spot_price(gyro_eclp_oracle_math_testing, spot_price):
     log_spot_price = spot_price.ln()
-    log_spot_price_sol = gyro_cemm_oracle_math_testing.calcLogSpotPrice(
+    log_spot_price_sol = gyro_eclp_oracle_math_testing.calcLogSpotPrice(
         scale(spot_price)
     )
 
@@ -48,15 +48,15 @@ def test_log_spot_price(gyro_cemm_oracle_math_testing, spot_price):
 @given(
     balances=gen_balances(),
     spot_price=price_strategy,
-    bpt_supply=qdecimals(min_value=1, max_value=10_000_000_000, places=4),
+    bpt_supply=qdecimals(min_value=1, max_value=10_000_000_000),
 )
-def test_log_bpt_price(gyro_cemm_oracle_math_testing, balances, spot_price, bpt_supply):
+def test_log_bpt_price(gyro_eclp_oracle_math_testing, balances, spot_price, bpt_supply):
     assume(balances[0] != 0 and balances[1] != 0)
 
     log_bpt_supply = to_decimal(bpt_supply).raw.ln()
     # scaled to have 4 decimals precision, but still needs to be scaled by 1e18 later)
     log_bpt_supply_scaled = log_bpt_supply / D("1e14")
-    log_bpt_price_sol = gyro_cemm_oracle_math_testing.calcLogBPTPrice(
+    log_bpt_price_sol = gyro_eclp_oracle_math_testing.calcLogBPTPrice(
         scale(balances[0]),
         scale(balances[1]),
         scale(spot_price),
@@ -76,15 +76,15 @@ def test_log_bpt_price(gyro_cemm_oracle_math_testing, balances, spot_price, bpt_
 
 @given(
     invariant=st.decimals(min_value="0.001", max_value="1e11"),
-    bpt_supply=qdecimals(min_value=1, max_value=10_000_000_000, places=4),
+    bpt_supply=qdecimals(min_value=1, max_value=10_000_000_000),
 )
-def test_log_invariant_div_supply(gyro_cemm_oracle_math_testing, invariant, bpt_supply):
+def test_log_invariant_div_supply(gyro_eclp_oracle_math_testing, invariant, bpt_supply):
     log_bpt_supply = to_decimal(bpt_supply).raw.ln()
     # scaled to have 4 decimals precision, but still needs to be scaled by 1e18 later)
     log_bpt_supply_scaled = log_bpt_supply / D("1e14")
 
     log_invariant_div_supply_sol = (
-        gyro_cemm_oracle_math_testing.calcLogInvariantDivSupply(
+        gyro_eclp_oracle_math_testing.calcLogInvariantDivSupply(
             scale(invariant), scale(log_bpt_supply_scaled)
         )
     )

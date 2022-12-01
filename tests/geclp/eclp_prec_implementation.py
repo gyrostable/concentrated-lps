@@ -6,30 +6,33 @@ from tests.support.quantized_decimal import QuantizedDecimal as D
 from tests.support.quantized_decimal_38 import QuantizedDecimal as D2
 from tests.support.quantized_decimal_100 import QuantizedDecimal as D3
 from tests.libraries.signed_fixed_point import add_mag, mul_array
+from tests.support.types import ECLPMathDerivedParamsQD38, ECLPMathParamsQD
 from tests.support.utils import scale, unscale
 
 _MAX_IN_RATIO = D("0.3")
 _MAX_OUT_RATIO = D("0.3")
 
 
-class Params(NamedTuple):
-    alpha: D
-    beta: D
-    c: D
-    s: D
-    l: D
+Params = ECLPMathParamsQD
+DerivedParams = ECLPMathDerivedParamsQD38
+# class Params(NamedTuple):
+#     alpha: D
+#     beta: D
+#     c: D
+#     s: D
+#     l: D
 
 
-class DerivedParams(NamedTuple):
-    tauAlpha: Tuple[D2, D2]
-    tauBeta: Tuple[D2, D2]
-    u: D2
-    v: D2
-    w: D2
-    z: D2
-    dSq: D2
-    # dAlpha: D2
-    # dBeta: D2
+# class DerivedParams(NamedTuple):
+#     tauAlpha: Tuple[D2, D2]
+#     tauBeta: Tuple[D2, D2]
+#     u: D2
+#     v: D2
+#     w: D2
+#     z: D2
+#     dSq: D2
+#     # dAlpha: D2
+#     # dBeta: D2
 
 
 class Vector2(NamedTuple):
@@ -458,10 +461,10 @@ def calc_derived_values(p: Params) -> DerivedParams:
     dSq = c * c + s * s
     d = dSq.sqrt()
     dAlpha = D3(1) / (
-        ((c / d + alpha * s / d) ** 2 / lam ** 2 + (alpha * c / d - s / d) ** 2).sqrt()
+        ((c / d + alpha * s / d) ** 2 / lam**2 + (alpha * c / d - s / d) ** 2).sqrt()
     )
     dBeta = D3(1) / (
-        ((c / d + beta * s / d) ** 2 / lam ** 2 + (beta * c / d - s / d) ** 2).sqrt()
+        ((c / d + beta * s / d) ** 2 / lam**2 + (beta * c / d - s / d) ** 2).sqrt()
     )
     tauAlpha = [0, 0]
     tauAlpha[0] = (alpha * c - s) * dAlpha
