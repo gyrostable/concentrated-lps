@@ -34,26 +34,21 @@ contract GyroECLPPoolFactory is IGyroECLPPoolFactory, BasePoolSplitCodeFactory, 
         IERC20[] memory tokens,
         GyroECLPMath.Params memory eclpParams,
         GyroECLPMath.DerivedParams memory derivedECLPParams,
+        address[] memory rateProviders,
         uint256 swapFeePercentage,
-        bool oracleEnabled,
         address owner,
         address capManager,
         ICappedLiquidity.CapParams memory capParams,
         address pauseManager
     ) external override returns (address) {
-        ExtensibleWeightedPool2Tokens.NewPoolParams memory baseParams = _makePoolParams(
-            name,
-            symbol,
-            tokens,
-            swapFeePercentage,
-            oracleEnabled,
-            owner
-        );
+        ExtensibleWeightedPool2Tokens.NewPoolParams memory baseParams = _makePoolParams(name, symbol, tokens, swapFeePercentage, owner);
 
         GyroECLPPool.GyroParams memory params = GyroECLPPool.GyroParams({
             baseParams: baseParams,
             eclpParams: eclpParams,
             derivedEclpParams: derivedECLPParams,
+            rateProvider0: rateProviders[0],
+            rateProvider1: rateProviders[1],
             capManager: capManager,
             capParams: capParams,
             pauseManager: pauseManager
@@ -67,7 +62,6 @@ contract GyroECLPPoolFactory is IGyroECLPPoolFactory, BasePoolSplitCodeFactory, 
         string memory symbol,
         IERC20[] memory tokens,
         uint256 swapFeePercentage,
-        bool oracleEnabled,
         address owner
     ) internal view returns (ExtensibleWeightedPool2Tokens.NewPoolParams memory) {
         return
@@ -80,7 +74,6 @@ contract GyroECLPPoolFactory is IGyroECLPPoolFactory, BasePoolSplitCodeFactory, 
                 swapFeePercentage: swapFeePercentage,
                 pauseWindowDuration: PAUSE_WINDOW_DURATION,
                 bufferPeriodDuration: BUFFER_PERIOD_DURATION,
-                oracleEnabled: oracleEnabled,
                 owner: owner
             });
     }

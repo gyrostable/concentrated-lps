@@ -317,4 +317,11 @@ library Gyro3CLPMath {
             amountIn = virtInOver.mulUp(amountOut).divUp(virtOutUnder.sub(amountOut));
         }
     }
+
+    /** @dev Computes relative spot prices of token0 and token1, respectively, in units of token2. */
+    function _calcSpotPrice01in2(uint256[] memory balances, uint256 virtualOffset) internal pure returns (uint256 spotPrice0, uint256 spotPrice1) {
+        uint256 virt2 = balances[2] + virtualOffset;
+        spotPrice0 = virt2.divUp(balances[0].add(virtualOffset));
+        spotPrice1 = virt2.divUp(balances[1].add(virtualOffset));
+    }
 }

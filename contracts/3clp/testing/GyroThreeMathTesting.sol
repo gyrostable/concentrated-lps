@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Gyro-1.0
 // for information on licensing please see the README in the GitHub repository <https://github.com/gyrostable/concentrated-lps>.
-
 pragma solidity 0.7.6;
 
 /// @dev We can't call the functions of the math library for testing b/c they're internal. That's why this contract forwards calls to the math library.

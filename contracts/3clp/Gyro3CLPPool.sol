@@ -5,6 +5,7 @@ pragma solidity 0.7.6;
 pragma experimental ABIEncoderV2;
 
 import "../../libraries/GyroConfigKeys.sol";
+import "../../libraries/GyroConfigHelpers.sol";
 import "../../interfaces/IGyroConfig.sol";
 import "../../libraries/GyroPoolMath.sol";
 import "../../libraries/GyroErrors.sol";
@@ -24,12 +25,14 @@ import "../LocallyPausable.sol";
 contract Gyro3CLPPool is ExtensibleBaseWeightedPool, CappedLiquidity, LocallyPausable {
     using GyroFixedPoint for uint256;
     using WeightedPoolUserDataHelpers for bytes;
+    using GyroConfigHelpers for IGyroConfig;
 
     uint256 private immutable _root3Alpha;
 
     IGyroConfig public gyroConfig;
 
     uint256 private constant _MAX_TOKENS = 3;
+    bytes32 private constant POOL_TYPE = "3CLP";
 
     IERC20 internal immutable _token0;
     IERC20 internal immutable _token1;
@@ -314,12 +317,15 @@ contract Gyro3CLPPool is ExtensibleBaseWeightedPool, CappedLiquidity, LocallyPau
         InputHelpers.ensureInputLengthMatch(amountsIn.length, 3);
         _upscaleArray(amountsIn, scalingFactors);
 
-        uint256 invariantAfterJoin = Gyro3CLPMath._calculateInvariant(amountsIn, _root3Alpha);
+        uint256 root3Alpha = _root3Alpha;
+        uint256 invariantAfterJoin = Gyro3CLPMath._calculateInvariant(amountsIn, root3Alpha);
+        uint256 virtualOffset = invariantAfterJoin.mulDown(root3Alpha);
 
-        // Set the initial BPT to the value of the invariant times the number of tokens. This makes BPT supply more
-        // consistent in Pools with similar compositions but different number of tokens.
-        // Note that the BPT supply also depends on the parameters of the pool.
-        uint256 bptAmountOut = Math.mul(invariantAfterJoin, 3);
+        /* We initialize the number of BPT tokens such that one BPT token corresponds to one unit of token2 at the initialized pool price. This makes BPT tokens comparable across pools with different parameters. Note that the invariant does *not* have this property!
+         */
+        (uint256 spotPrice0, uint256 spotPrice1) = Gyro3CLPMath._calcSpotPrice01in2(amountsIn, virtualOffset);
+
+        uint256 bptAmountOut = amountsIn[0].mulDown(spotPrice0).add(amountsIn[1].mulDown(spotPrice1)).add(amountsIn[2]);
 
         _lastInvariant = invariantAfterJoin;
 
@@ -476,6 +482,16 @@ contract Gyro3CLPPool is ExtensibleBaseWeightedPool, CappedLiquidity, LocallyPau
         return _calculateInvariant();
     }
 
+    /** @dev Returns the current spot prices of token0 and token1, both quoted in units of token2.
+     */
+    function getPrices() external view returns (uint256 spotPrice0, uint256 spotPrice1) {
+        uint256[] memory balances = _getAllBalances();
+        uint256 root3Alpha = _root3Alpha;
+        uint256 invariant = Gyro3CLPMath._calculateInvariant(balances, root3Alpha);
+        uint256 virtualOffset = invariant.mulDown(root3Alpha);
+        return Gyro3CLPMath._calcSpotPrice01in2(balances, virtualOffset);
+    }
+
     function _joinAllTokensInForExactBPTOut(uint256[] memory balances, bytes memory userData)
         internal
         view
@@ -621,8 +637,8 @@ contract Gyro3CLPPool is ExtensibleBaseWeightedPool, CappedLiquidity, LocallyPau
         )
     {
         return (
-            gyroConfig.getUint(GyroConfigKeys.PROTOCOL_SWAP_FEE_PERC_KEY),
-            gyroConfig.getUint(GyroConfigKeys.PROTOCOL_FEE_GYRO_PORTION_KEY),
+            gyroConfig.getSwapFeePercForPool(address(this), POOL_TYPE),
+            gyroConfig.getProtocolFeeGyroPortionForPool(address(this), POOL_TYPE),
             gyroConfig.getAddress(GyroConfigKeys.GYRO_TREASURY_KEY),
             gyroConfig.getAddress(GyroConfigKeys.BAL_TREASURY_KEY)
         );

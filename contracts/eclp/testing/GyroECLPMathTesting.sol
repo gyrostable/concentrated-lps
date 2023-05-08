@@ -70,7 +70,7 @@ contract GyroECLPMathTesting {
         GyroECLPMath.DerivedParams memory derived,
         int256 invariant
     ) external pure returns (uint256 px) {
-        px = GyroECLPMath.calculatePrice(balances, params, derived, invariant);
+        px = GyroECLPMath.calcSpotPrice0in1(balances, params, derived, invariant);
     }
 
     function checkAssetBounds(

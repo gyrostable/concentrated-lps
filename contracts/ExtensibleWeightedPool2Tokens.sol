@@ -16,22 +16,13 @@ import "@balancer-labs/v2-vault/contracts/interfaces/IMinimalSwapInfoPool.sol";
 import "@balancer-labs/v2-pool-utils/contracts/BasePool.sol";
 import "@balancer-labs/v2-pool-utils/contracts/BasePoolAuthorization.sol";
 import "@balancer-labs/v2-pool-utils/contracts/BalancerPoolToken.sol";
-import "@balancer-labs/v2-pool-utils/contracts/oracle/PoolPriceOracle.sol";
-import "@balancer-labs/v2-pool-utils/contracts/oracle/Buffer.sol";
 
 import "@balancer-labs/v2-pool-weighted/contracts/WeightedMath.sol";
-import "@balancer-labs/v2-pool-weighted/contracts/WeightedOracleMath.sol";
 import "@balancer-labs/v2-pool-weighted/contracts/WeightedPoolUserDataHelpers.sol";
 import "@balancer-labs/v2-pool-weighted/contracts/WeightedPool2TokensMiscData.sol";
 
 /** @dev Extensible version (i.e., methods can be overriden) of the WeightedPool2Tokens. */
-abstract contract ExtensibleWeightedPool2Tokens is
-    IMinimalSwapInfoPool,
-    BasePoolAuthorization,
-    BalancerPoolToken,
-    TemporarilyPausable,
-    PoolPriceOracle
-{
+abstract contract ExtensibleWeightedPool2Tokens is IMinimalSwapInfoPool, BasePoolAuthorization, BalancerPoolToken, TemporarilyPausable {
     using GyroFixedPoint for uint256;
     using WeightedPoolUserDataHelpers for bytes;
     using WeightedPool2TokensMiscData for bytes32;
@@ -61,10 +52,10 @@ abstract contract ExtensibleWeightedPool2Tokens is
     // All token balances are normalized to behave as if the token had 18 decimals. We assume a token's decimals will
     // not change throughout its lifetime, and store the corresponding scaling factor for each at construction time.
     // These factors are always greater than or equal to one: tokens with more than 18 decimals are not supported.
+    // We still store these as 18-decimal (GyroFixedPoint) values for composability.
     uint256 internal immutable _scalingFactor0;
     uint256 internal immutable _scalingFactor1;
 
-    event OracleEnabledChanged(bool enabled);
     event SwapFeePercentageChanged(uint256 swapFeePercentage);
 
     modifier onlyVault(bytes32 poolId) {
@@ -82,7 +73,6 @@ abstract contract ExtensibleWeightedPool2Tokens is
         uint256 swapFeePercentage;
         uint256 pauseWindowDuration;
         uint256 bufferPeriodDuration;
-        bool oracleEnabled;
         address owner;
     }
 
@@ -105,7 +95,6 @@ abstract contract ExtensibleWeightedPool2Tokens is
         // This contract is not derived from BasePool, so we need to do this check ourselves.
         InputHelpers.ensureArrayIsSorted(tokens);
 
-        _setOracleEnabled(params.oracleEnabled);
         _setSwapFeePercentage(params.swapFeePercentage);
 
         bytes32 poolId = params.vault.registerPool(IVault.PoolSpecialization.TWO_TOKEN);
@@ -129,6 +118,9 @@ abstract contract ExtensibleWeightedPool2Tokens is
         return _poolId;
     }
 
+    /** @dev Only `swapFeePercentage` is non-trivial; everything else is 0/false because the oracle is not used.
+     * These variables are returned to keep the call signature compatible.
+     */
     function getMiscData()
         external
         view
@@ -171,26 +163,6 @@ abstract contract ExtensibleWeightedPool2Tokens is
         return
             (actionId == getActionId(BasePool.setSwapFeePercentage.selector)) ||
             (actionId == getActionId(BasePool.setAssetManagerPoolConfig.selector));
-    }
-
-    /**
-     * @dev Balancer Governance can always enable the Oracle, even if it was originally not enabled. This allows for
-     * Pools that unexpectedly drive much more volume and liquidity than expected to serve as Price Oracles.
-     *
-     * Note that the Oracle can only be enabled - it can never be disabled.
-     */
-    function enableOracle() external whenNotPaused authenticate {
-        _setOracleEnabled(true);
-
-        // Cache log invariant and supply only if the pool was initialized
-        if (totalSupply() > 0) {
-            _cacheInvariantAndSupply();
-        }
-    }
-
-    function _setOracleEnabled(bool enabled) internal {
-        _miscData = _miscData.setOracleEnabled(enabled);
-        emit OracleEnabledChanged(enabled);
     }
 
     // Caller must be approved by the Vault's Authorizer
@@ -249,13 +221,6 @@ abstract contract ExtensibleWeightedPool2Tokens is
         // All token amounts are upscaled.
         balanceTokenIn = _upscale(balanceTokenIn, scalingFactorTokenIn);
         balanceTokenOut = _upscale(balanceTokenOut, scalingFactorTokenOut);
-
-        // Update price oracle with the pre-swap balances
-        _updateOracle(
-            request.lastChangeBlock,
-            tokenInIsToken0 ? balanceTokenIn : balanceTokenOut,
-            tokenInIsToken0 ? balanceTokenOut : balanceTokenIn
-        );
 
         if (request.kind == IVault.SwapKind.GIVEN_IN) {
             // Fees are subtracted before scaling, to reduce the complexity of the rounding direction analysis.
@@ -337,9 +302,6 @@ abstract contract ExtensibleWeightedPool2Tokens is
         } else {
             _upscaleArray(balances);
 
-            // Update price oracle with the pre-join balances
-            _updateOracle(lastChangeBlock, balances[0], balances[1]);
-
             (bptAmountOut, amountsIn, dueProtocolFeeAmounts) = _onJoinPool(
                 poolId,
                 sender,
@@ -359,10 +321,6 @@ abstract contract ExtensibleWeightedPool2Tokens is
             // dueProtocolFeeAmounts are amounts exiting the Pool, so we round down.
             _downscaleDownArray(dueProtocolFeeAmounts);
         }
-
-        // Update cached total supply and invariant using the results after the join that will be used for future
-        // oracle updates.
-        _cacheInvariantAndSupply();
     }
 
     /**
@@ -454,7 +412,7 @@ abstract contract ExtensibleWeightedPool2Tokens is
         );
 
         // Update current balances by subtracting the protocol fee amounts
-        _mutateAmounts(balances, dueProtocolFeeAmounts, FixedPoint.sub);
+        _mutateAmounts(balances, dueProtocolFeeAmounts, GyroFixedPoint.sub);
         (uint256 bptAmountOut, uint256[] memory amountsIn) = _doJoin(balances, normalizedWeights, userData);
 
         // Update the invariant with the balances the Pool will have after the join, in order to compute the
@@ -573,12 +531,6 @@ abstract contract ExtensibleWeightedPool2Tokens is
         _downscaleDownArray(amountsOut);
         _downscaleDownArray(dueProtocolFeeAmounts);
 
-        // Update cached total supply and invariant using the results after the exit that will be used for future
-        // oracle updates, only if the pool was not paused (to minimize code paths taken while paused).
-        if (_isNotPaused()) {
-            _cacheInvariantAndSupply();
-        }
-
         return (amountsOut, dueProtocolFeeAmounts);
     }
 
@@ -622,9 +574,6 @@ abstract contract ExtensibleWeightedPool2Tokens is
         uint256[] memory normalizedWeights = _normalizedWeights();
 
         if (_isNotPaused()) {
-            // Update price oracle with the pre-exit balances
-            _updateOracle(lastChangeBlock, balances[0], balances[1]);
-
             // Due protocol swap fee amounts are computed by measuring the growth of the invariant between the previous
             // join or exit event and now - the invariant's growth is due exclusively to swap fees. This avoids
             // spending gas calculating the fees on each individual swap.
@@ -640,7 +589,7 @@ abstract contract ExtensibleWeightedPool2Tokens is
             // Update current balances by subtracting the protocol fee amounts
             _mutateAmounts(balances, dueProtocolFeeAmounts, GyroFixedPoint.sub);
         } else {
-            // If the contract is paused, swap protocol fee amounts are not charged and the oracle is not updated
+            // If the contract is paused, swap protocol fee amounts are not charged
             // to avoid extra calculations and reduce the potential for errors.
             dueProtocolFeeAmounts = new uint256[](2);
         }
@@ -736,72 +685,10 @@ abstract contract ExtensibleWeightedPool2Tokens is
         return (bptAmountIn, amountsOut);
     }
 
-    // Oracle functions
-
-    /**
-     * @dev Updates the Price Oracle based on the Pool's current state (balances, BPT supply and invariant). Must be
-     * called on *all* state-changing functions with the balances *before* the state change happens, and with
-     * `lastChangeBlock` as the number of the block in which any of the balances last changed.
+    /** @dev Applies the reverse of the internal scaling rate to the relative spot price.
      */
-    function _updateOracle(
-        uint256 lastChangeBlock,
-        uint256 balanceToken0,
-        uint256 balanceToken1
-    ) internal virtual;
-
-    // bytes32 miscData = _miscData;
-    // if (miscData.oracleEnabled() && block.number > lastChangeBlock) {
-    //     int256 logSpotPrice = WeightedOracleMath._calcLogSpotPrice(
-    //         _normalizedWeight0,
-    //         balanceToken0,
-    //         _normalizedWeight1,
-    //         balanceToken1
-    //     );
-
-    //     int256 logBPTPrice = WeightedOracleMath._calcLogBPTPrice(
-    //         _normalizedWeight0,
-    //         balanceToken0,
-    //         miscData.logTotalSupply()
-    //     );
-
-    //     uint256 oracleCurrentIndex = miscData.oracleIndex();
-    //     uint256 oracleCurrentSampleInitialTimestamp = miscData.oracleSampleCreationTimestamp();
-    //     uint256 oracleUpdatedIndex = _processPriceData(
-    //         oracleCurrentSampleInitialTimestamp,
-    //         oracleCurrentIndex,
-    //         logSpotPrice,
-    //         logBPTPrice,
-    //         miscData.logInvariant()
-    //     );
-
-    //     if (oracleCurrentIndex != oracleUpdatedIndex) {
-    //         // solhint-disable not-rely-on-time
-    //         miscData = miscData.setOracleIndex(oracleUpdatedIndex);
-    //         miscData = miscData.setOracleSampleCreationTimestamp(block.timestamp);
-    //         _miscData = miscData;
-    //     }
-    // }
-
-    /**
-     * @dev Stores the logarithm of the invariant and BPT total supply, to be later used in each oracle update. Because
-     * it is stored in miscData, which is read in all operations (including swaps), this saves gas by not requiring to
-     * compute or read these values when updating the oracle.
-     *
-     * This function must be called by all actions that update the invariant and BPT supply (joins and exits). Swaps
-     * also alter the invariant due to collected swap fees, but this growth is considered negligible and not accounted
-     * for.
-     */
-    function _cacheInvariantAndSupply() internal {
-        bytes32 miscData = _miscData;
-        if (miscData.oracleEnabled()) {
-            miscData = miscData.setLogInvariant(LogCompression.toLowResLog(_lastInvariant));
-            miscData = miscData.setLogTotalSupply(LogCompression.toLowResLog(totalSupply()));
-            _miscData = miscData;
-        }
-    }
-
-    function _getOracleIndex() internal view override returns (uint256) {
-        return _miscData.oracleIndex();
+    function _adjustPrice(uint256 spotPrice) internal view virtual returns (uint256) {
+        return spotPrice;
     }
 
     // Query functions
@@ -919,7 +806,8 @@ abstract contract ExtensibleWeightedPool2Tokens is
 
     /**
      * @dev Returns a scaling factor that, when multiplied to a token amount for `token`, normalizes its balance as if
-     * it had 18 decimals.
+     * it had 18 decimals. The scaling factor itself is 18-decimal FixedPoint, so needs to be multiplied via
+     * `mulDown()` or `mulUp()`, not "*".
      */
     function _computeScalingFactor(IERC20 token) private view returns (uint256) {
         // Tokens that don't implement the `decimals` method are not supported.
@@ -927,14 +815,14 @@ abstract contract ExtensibleWeightedPool2Tokens is
 
         // Tokens with more than 18 decimals are not supported.
         uint256 decimalsDifference = Math.sub(18, tokenDecimals);
-        return 10**decimalsDifference;
+        return 10**decimalsDifference * GyroFixedPoint.ONE;
     }
 
     /**
      * @dev Returns the scaling factor for one of the Pool's tokens. Reverts if `token` is not a token registered by the
-     * Pool.
+     * Pool. The scaling factor is an 18-decimal FixedPoint number.
      */
-    function _scalingFactor(bool token0) internal view returns (uint256) {
+    function _scalingFactor(bool token0) internal view virtual returns (uint256) {
         return token0 ? _scalingFactor0 : _scalingFactor1;
     }
 
@@ -943,7 +831,7 @@ abstract contract ExtensibleWeightedPool2Tokens is
      * scaling or not.
      */
     function _upscale(uint256 amount, uint256 scalingFactor) internal pure returns (uint256) {
-        return Math.mul(amount, scalingFactor);
+        return GyroFixedPoint.mulDown(amount, scalingFactor);
     }
 
     /**
@@ -951,8 +839,8 @@ abstract contract ExtensibleWeightedPool2Tokens is
      * instead *mutates* the `amounts` array.
      */
     function _upscaleArray(uint256[] memory amounts) internal view {
-        amounts[0] = Math.mul(amounts[0], _scalingFactor(true));
-        amounts[1] = Math.mul(amounts[1], _scalingFactor(false));
+        amounts[0] = GyroFixedPoint.mulDown(amounts[0], _scalingFactor(true));
+        amounts[1] = GyroFixedPoint.mulDown(amounts[1], _scalingFactor(false));
     }
 
     /**
@@ -960,7 +848,7 @@ abstract contract ExtensibleWeightedPool2Tokens is
      * whether it needed scaling or not. The result is rounded down.
      */
     function _downscaleDown(uint256 amount, uint256 scalingFactor) internal pure returns (uint256) {
-        return Math.divDown(amount, scalingFactor);
+        return GyroFixedPoint.divDown(amount, scalingFactor);
     }
 
     /**
@@ -968,8 +856,8 @@ abstract contract ExtensibleWeightedPool2Tokens is
      * but instead *mutates* the `amounts` array.
      */
     function _downscaleDownArray(uint256[] memory amounts) internal view {
-        amounts[0] = Math.divDown(amounts[0], _scalingFactor(true));
-        amounts[1] = Math.divDown(amounts[1], _scalingFactor(false));
+        amounts[0] = GyroFixedPoint.divDown(amounts[0], _scalingFactor(true));
+        amounts[1] = GyroFixedPoint.divDown(amounts[1], _scalingFactor(false));
     }
 
     /**
@@ -977,7 +865,7 @@ abstract contract ExtensibleWeightedPool2Tokens is
      * whether it needed scaling or not. The result is rounded up.
      */
     function _downscaleUp(uint256 amount, uint256 scalingFactor) internal pure returns (uint256) {
-        return Math.divUp(amount, scalingFactor);
+        return GyroFixedPoint.divUp(amount, scalingFactor);
     }
 
     /**
@@ -985,8 +873,8 @@ abstract contract ExtensibleWeightedPool2Tokens is
      * but instead *mutates* the `amounts` array.
      */
     function _downscaleUpArray(uint256[] memory amounts) internal view {
-        amounts[0] = Math.divUp(amounts[0], _scalingFactor(true));
-        amounts[1] = Math.divUp(amounts[1], _scalingFactor(false));
+        amounts[0] = GyroFixedPoint.divUp(amounts[0], _scalingFactor(true));
+        amounts[1] = GyroFixedPoint.divUp(amounts[1], _scalingFactor(false));
     }
 
     function _getAuthorizer() internal view override returns (IAuthorizer) {

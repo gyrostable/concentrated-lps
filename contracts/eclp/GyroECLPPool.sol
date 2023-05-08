@@ -9,15 +9,16 @@ import "../../libraries/GyroFixedPoint.sol";
 
 import "@balancer-labs/v2-pool-weighted/contracts/WeightedPoolUserDataHelpers.sol";
 import "@balancer-labs/v2-pool-weighted/contracts/WeightedPool2TokensMiscData.sol";
+import "@balancer-labs/v2-pool-utils/contracts/interfaces/IRateProvider.sol";
 
 import "../../libraries/GyroConfigKeys.sol";
+import "../../libraries/GyroConfigHelpers.sol";
 import "../../libraries/GyroErrors.sol";
 import "../../interfaces/IGyroConfig.sol";
 import "../../libraries/GyroPoolMath.sol";
 
 import "../ExtensibleWeightedPool2Tokens.sol";
 import "./GyroECLPMath.sol";
-import "./GyroECLPOracleMath.sol";
 import "../CappedLiquidity.sol";
 import "../LocallyPausable.sol";
 
@@ -27,31 +28,39 @@ contract GyroECLPPool is ExtensibleWeightedPool2Tokens, CappedLiquidity, Locally
     using WeightedPool2TokensMiscData for bytes32;
     using SafeCast for int256;
     using SafeCast for uint256;
+    using GyroConfigHelpers for IGyroConfig;
 
     uint256 private constant _MINIMUM_BPT = 1e6;
+    bytes32 private constant POOL_TYPE = "ECLP";
 
-    /// @notice Parameters of the ECLP pool
-    int256 public immutable _paramsAlpha;
-    int256 public immutable _paramsBeta;
-    int256 public immutable _paramsC;
-    int256 public immutable _paramsS;
-    int256 public immutable _paramsLambda;
-    int256 public immutable _tauAlphaX;
-    int256 public immutable _tauAlphaY;
-    int256 public immutable _tauBetaX;
-    int256 public immutable _tauBetaY;
-    int256 public immutable _u;
-    int256 public immutable _v;
-    int256 public immutable _w;
-    int256 public immutable _z;
-    int256 public immutable _dSq;
+    /// @dev Parameters of the ECLP pool
+    int256 internal immutable _paramsAlpha;
+    int256 internal immutable _paramsBeta;
+    int256 internal immutable _paramsC;
+    int256 internal immutable _paramsS;
+    int256 internal immutable _paramsLambda;
+    int256 internal immutable _tauAlphaX;
+    int256 internal immutable _tauAlphaY;
+    int256 internal immutable _tauBetaX;
+    int256 internal immutable _tauBetaY;
+    int256 internal immutable _u;
+    int256 internal immutable _v;
+    int256 internal immutable _w;
+    int256 internal immutable _z;
+    int256 internal immutable _dSq;
 
     IGyroConfig public gyroConfig;
+
+    /// @dev for rate scaling
+    IRateProvider public immutable rateProvider0;
+    IRateProvider public immutable rateProvider1;
 
     struct GyroParams {
         NewPoolParams baseParams;
         GyroECLPMath.Params eclpParams;
         GyroECLPMath.DerivedParams derivedEclpParams;
+        address rateProvider0;
+        address rateProvider1;
         address capManager;
         CapParams capParams;
         address pauseManager;
@@ -64,8 +73,6 @@ contract GyroECLPPool is ExtensibleWeightedPool2Tokens, CappedLiquidity, Locally
     event InvariantOldAndNew(uint256 oldInvariant, uint256 newInvariant);
 
     event SwapParams(uint256[] balances, GyroECLPMath.Vector2 invariant, uint256 amount);
-
-    event OracleIndexUpdated(uint256 oracleUpdatedIndex);
 
     constructor(GyroParams memory params, address configAddress)
         ExtensibleWeightedPool2Tokens(params.baseParams)
@@ -101,6 +108,9 @@ contract GyroECLPPool is ExtensibleWeightedPool2Tokens, CappedLiquidity, Locally
         );
 
         gyroConfig = IGyroConfig(configAddress);
+
+        rateProvider0 = IRateProvider(params.rateProvider0);
+        rateProvider1 = IRateProvider(params.rateProvider1);
     }
 
     /** @dev reconstructs ECLP params structs from immutable arrays */
@@ -114,19 +124,64 @@ contract GyroECLPPool is ExtensibleWeightedPool2Tokens, CappedLiquidity, Locally
         return reconstructECLPParams();
     }
 
+    /** @dev Reads the balance of a token from the balancer vault and returns the scaled amount. Smaller storage access
+     * compared to getVault().getPoolTokens().
+     * Copied from the 3CLP *except* that for the 2CLP, the scalingFactor is interpreted as a regular integer, not a
+     * FixedPoint number. This is an inconsistency between the base contracts.
+     */
+    function _getScaledTokenBalance(IERC20 token, uint256 scalingFactor) internal view returns (uint256 balance) {
+        // Signature of getPoolTokenInfo(): (pool id, token) -> (cash, managed, lastChangeBlock, assetManager)
+        // and total amount = cash + managed. See balancer repo, PoolTokens.sol and BalanceAllocation.sol
+        (uint256 cash, uint256 managed, , ) = getVault().getPoolTokenInfo(getPoolId(), token);
+        balance = cash + managed; // can't overflow, see BalanceAllocation.sol::total() in the Balancer repo.
+        balance = balance.mulDown(scalingFactor);
+    }
+
+    /** @dev Get all balances in the pool, scaled by the appropriate scaling factors, in a relatively gas-efficient way.
+     * Essentially copied from the 3CLP.
+     */
+    function _getAllBalances() internal view returns (uint256[] memory balances) {
+        // The below is more gas-efficient than the following line because the token slots don't have to be read in the
+        // vault.
+        // (, uint256[] memory balances, ) = getVault().getPoolTokens(getPoolId());
+        balances = new uint256[](2);
+        balances[0] = _getScaledTokenBalance(_token0, _scalingFactor(true));
+        balances[1] = _getScaledTokenBalance(_token1, _scalingFactor(false));
+        return balances;
+    }
+
     /**
      * @dev Returns the current value of the invariant.
+     * Note: This function is not used internally; it's public, not external, so we can override it cleanly.
      */
-    // TODO WIP killing this routine to pipe DerivedParams through differently.
-    //    function getInvariant() public view override returns (int256) {
-    //        (, uint256[] memory balances, ) = getVault().getPoolTokens(getPoolId());
-    //
-    //        // Since the Pool hooks always work with upscaled balances, we manually
-    //        // upscale here for consistency
-    //        _upscaleArray(balances);
-    //
-    //        return GyroECLPMath.calculateInvariant(balances, eclpParams, derived);
-    //    }
+    function getInvariant() public view override returns (uint256) {
+        uint256[] memory balances = _getAllBalances();
+        (GyroECLPMath.Params memory eclpParams, GyroECLPMath.DerivedParams memory derivedECLPParams) = reconstructECLPParams();
+        return GyroECLPMath.calculateInvariant(balances, eclpParams, derivedECLPParams);
+    }
+
+    /** When rateProvider{0,1} is provided, this returns the *scaled* price, suitable to compare *rate scaled* balances.
+     *  To compare (decimal- but) not-rate-scaled balances, apply _adjustPrice() to the result.
+     */
+    function _getPrice(
+        uint256[] memory balances,
+        uint256 invariant,
+        GyroECLPMath.Params memory eclpParams,
+        GyroECLPMath.DerivedParams memory derivedECLPParams
+    ) internal view returns (uint256 spotPrice) {
+        spotPrice = GyroECLPMath.calcSpotPrice0in1(balances, eclpParams, derivedECLPParams, invariant.toInt256());
+    }
+
+    /** Returns the current spot price of token0 quoted in units of token1. When rateProvider{0,1} is provided, the
+     * returned price corresponds to tokens *before* rate scaling.
+     */
+    function getPrice() external view returns (uint256 spotPrice) {
+        uint256[] memory balances = _getAllBalances();
+        (GyroECLPMath.Params memory eclpParams, GyroECLPMath.DerivedParams memory derivedECLPParams) = reconstructECLPParams();
+        uint256 invariant = GyroECLPMath.calculateInvariant(balances, eclpParams, derivedECLPParams);
+        spotPrice = _getPrice(balances, invariant, eclpParams, derivedECLPParams);
+        spotPrice = _adjustPrice(spotPrice);
+    }
 
     // Swap Hooks
 
@@ -163,9 +218,6 @@ contract GyroECLPPool is ExtensibleWeightedPool2Tokens, CappedLiquidity, Locally
             // invariant = overestimate in x-component, underestimate in y-component
             // No overflow in `+` due to constraints to the different values enforced in GyroECLPMath.
             invariant = GyroECLPMath.Vector2(currentInvariant + 2 * invErr, currentInvariant);
-
-            // Update price oracle with the pre-swap balances. Vs other pools, we need to do this after invariant is calculated
-            _updateOracle(request.lastChangeBlock, balances, currentInvariant.toUint256(), eclpParams, derivedECLPParams);
         }
 
         if (request.kind == IVault.SwapKind.GIVEN_IN) {
@@ -251,10 +303,10 @@ contract GyroECLPPool is ExtensibleWeightedPool2Tokens, CappedLiquidity, Locally
 
         emit InvariantAterInitializeJoin(invariantAfterJoin);
 
-        // Set the initial BPT to the value of the invariant times the number of tokens. This makes BPT supply more
-        // consistent in Pools with similar compositions but different number of tokens.
-
-        uint256 bptAmountOut = Math.mul(invariantAfterJoin, 2);
+        /* We initialize the number of BPT tokens such that one BPT token corresponds to one unit of token1 at the initialized pool price. This makes BPT tokens comparable across pools with different parameters. Note that the invariant does *not* have this property!
+         */
+        uint256 spotPrice = _getPrice(amountsIn, invariantAfterJoin, eclpParams, derivedECLPParams);
+        uint256 bptAmountOut = Math.add(amountsIn[0].mulDown(spotPrice), amountsIn[1]);
 
         _lastInvariant = invariantAfterJoin;
 
@@ -302,9 +354,6 @@ contract GyroECLPPool is ExtensibleWeightedPool2Tokens, CappedLiquidity, Locally
         // computing them on each individual swap
         (GyroECLPMath.Params memory eclpParams, GyroECLPMath.DerivedParams memory derivedECLPParams) = reconstructECLPParams();
         uint256 invariantBeforeAction = GyroECLPMath.calculateInvariant(balances, eclpParams, derivedECLPParams);
-
-        // Update price oracle with the pre-exit balances. Vs other pools, we need to do this after invariant is calculated
-        _updateOracle(lastChangeBlock, balances, invariantBeforeAction, eclpParams, derivedECLPParams);
 
         _distributeFees(invariantBeforeAction);
 
@@ -392,16 +441,13 @@ contract GyroECLPPool is ExtensibleWeightedPool2Tokens, CappedLiquidity, Locally
         // out) remain functional.
         (GyroECLPMath.Params memory eclpParams, GyroECLPMath.DerivedParams memory derivedECLPParams) = reconstructECLPParams();
 
-        // Note: If the contract is paused, swap protocol fee amounts are not charged and the oracle is not updated
+        // Note: If the contract is paused, swap protocol fee amounts are not charged
         // to avoid extra calculations and reduce the potential for errors.
         if (_isNotPaused()) {
             // Due protocol swap fee amounts are computed by measuring the growth of the invariant between the previous
             // join or exit event and now - the invariant's growth is due exclusively to swap fees. This avoids
             // spending gas calculating the fees on each individual swap.
             uint256 invariantBeforeAction = GyroECLPMath.calculateInvariant(balances, eclpParams, derivedECLPParams);
-
-            // Update price oracle with the pre-exit balances. Vs other pools, we need to do this after invariant is calculated
-            _updateOracle(lastChangeBlock, balances, invariantBeforeAction, eclpParams, derivedECLPParams);
 
             _distributeFees(invariantBeforeAction);
 
@@ -416,7 +462,7 @@ contract GyroECLPPool is ExtensibleWeightedPool2Tokens, CappedLiquidity, Locally
 
             emit InvariantOldAndNew(invariantBeforeAction, _lastInvariant);
         } else {
-            // Note: If the contract is paused, swap protocol fee amounts are not charged and the oracle is not updated
+            // Note: If the contract is paused, swap protocol fee amounts are not charged
             // to avoid extra calculations and reduce the potential for errors.
             (bptAmountIn, amountsOut) = _doExit(balances, userData);
 
@@ -475,68 +521,6 @@ contract GyroECLPPool is ExtensibleWeightedPool2Tokens, CappedLiquidity, Locally
             balances[0] = balanceTokenOut;
             balances[1] = balanceTokenIn;
         }
-    }
-
-    /**
-     * @dev Updates the Price Oracle based on the Pool's current state (balances, BPT supply and invariant). Must be
-     * called on *all* state-changing functions with the balances *before* the state change happens, and with
-     * `lastChangeBlock` as the number of the block in which any of the balances last changed.
-     */
-    function _updateOracle(
-        uint256 lastChangeBlock,
-        uint256[] memory balances,
-        uint256 invariant,
-        GyroECLPMath.Params memory eclpParams,
-        GyroECLPMath.DerivedParams memory derivedECLPParams
-    ) internal {
-        bytes32 miscData = _miscData;
-        if (miscData.oracleEnabled() && block.number > lastChangeBlock) {
-            uint256 spotPrice = GyroECLPMath.calculatePrice(balances, eclpParams, derivedECLPParams, invariant.toInt256());
-
-            int256 logSpotPrice = GyroECLPOracleMath._calcLogSpotPrice(spotPrice);
-
-            // // can optionally log BPT spot price using this code. Instead, we log L/S
-            // int256 logBPTPrice = GyroECLPOracleMath._calcLogBPTPrice(
-            //     balances[0],
-            //     balances[1],
-            //     spotPrice,
-            //     miscData.logTotalSupply()
-            // );
-
-            int256 logInvariantDivSupply = GyroECLPOracleMath._calcLogInvariantDivSupply(invariant, miscData.logTotalSupply());
-
-            uint256 oracleCurrentIndex = miscData.oracleIndex();
-            uint256 oracleCurrentSampleInitialTimestamp = miscData.oracleSampleCreationTimestamp();
-            uint256 oracleUpdatedIndex = _processPriceData(
-                oracleCurrentSampleInitialTimestamp,
-                oracleCurrentIndex,
-                logSpotPrice,
-                logInvariantDivSupply, // replaces logBPTPrice
-                miscData.logInvariant()
-            );
-
-            if (oracleCurrentIndex != oracleUpdatedIndex) {
-                // solhint-disable not-rely-on-time
-                miscData = miscData.setOracleIndex(oracleUpdatedIndex);
-                miscData = miscData.setOracleSampleCreationTimestamp(block.timestamp);
-                _miscData = miscData;
-
-                emit OracleIndexUpdated(oracleUpdatedIndex);
-            }
-        }
-    }
-
-    // Override unused inherited function
-    // this intentionally does not revert so that it will be bypassed on onJoinPool inherited from ExtensibleWeightedPool2Tokens
-    // the above overloading implementation of _updateOracle takes different arguments and processes the oracle update in a different place
-    // Note: this is identical to the handling in Gyro2CLPPool.sol
-    function _updateOracle(
-        uint256,
-        uint256,
-        uint256
-    ) internal pure override {
-        // solhint-disable-previous-line no-empty-blocks
-        // Do nothing.
     }
 
     // Fee helpers. These are exactly the same as in the Gyro2CLPPool.
@@ -642,8 +626,8 @@ contract GyroECLPPool is ExtensibleWeightedPool2Tokens, CappedLiquidity, Locally
         )
     {
         return (
-            gyroConfig.getUint(GyroConfigKeys.PROTOCOL_SWAP_FEE_PERC_KEY),
-            gyroConfig.getUint(GyroConfigKeys.PROTOCOL_FEE_GYRO_PORTION_KEY),
+            gyroConfig.getSwapFeePercForPool(address(this), POOL_TYPE),
+            gyroConfig.getProtocolFeeGyroPortionForPool(address(this), POOL_TYPE),
             gyroConfig.getAddress(GyroConfigKeys.GYRO_TREASURY_KEY),
             gyroConfig.getAddress(GyroConfigKeys.BAL_TREASURY_KEY)
         );
@@ -651,5 +635,35 @@ contract GyroECLPPool is ExtensibleWeightedPool2Tokens, CappedLiquidity, Locally
 
     function _setPausedState(bool paused) internal override {
         _setPaused(paused);
+    }
+
+    // Rate scaling
+
+    function _scalingFactor(bool token0) internal view override returns (uint256) {
+        IRateProvider rateProvider;
+        uint256 scalingFactor;
+        if (token0) {
+            rateProvider = rateProvider0;
+            scalingFactor = _scalingFactor0;
+        } else {
+            rateProvider = rateProvider1;
+            scalingFactor = _scalingFactor1;
+        }
+        if (address(rateProvider) != address(0)) scalingFactor = scalingFactor.mulDown(rateProvider.getRate());
+        return scalingFactor;
+    }
+
+    function _adjustPrice(uint256 spotPrice) internal view override returns (uint256) {
+        if (address(rateProvider0) != address(0)) spotPrice = spotPrice.mulDown(rateProvider0.getRate());
+        if (address(rateProvider1) != address(0)) spotPrice = spotPrice.divDown(rateProvider1.getRate());
+        return spotPrice;
+    }
+
+    /// @notice Convenience function to fetch the two rates used for scaling the two tokens, as of rateProvider{0,1}.
+    /// Note that these rates do *not* contain scaling to account for differences in the number of decimals. The rates
+    /// themselves are always 18-decimals.
+    function getTokenRates() public view returns (uint256 rate0, uint256 rate1) {
+        rate0 = address(rateProvider0) != address(0) ? rateProvider0.getRate() : GyroFixedPoint.ONE;
+        rate1 = address(rateProvider1) != address(0) ? rateProvider1.getRate() : GyroFixedPoint.ONE;
     }
 }

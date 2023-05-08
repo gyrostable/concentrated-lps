@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Gyro-1.0
 // for information on licensing please see the README in the GitHub repository <https://github.com/gyrostable/concentrated-lps>.
-
 pragma solidity 0.7.6;
 
 import "@balancer-labs/v2-solidity-utils/contracts/openzeppelin/ERC20.sol";
@@ -13,5 +12,11 @@ contract SimpleERC20 is ERC20, Ownable {
 
     function mint(address to, uint256 amount) public onlyOwner {
         _mint(to, amount);
+    }
+}
+
+contract SimpleERC20CustomDecimal is SimpleERC20 {
+    constructor(uint8 decimals) SimpleERC20() {
+        _setupDecimals(decimals);
     }
 }

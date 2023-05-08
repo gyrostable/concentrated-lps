@@ -34,20 +34,12 @@ contract Gyro2CLPPoolFactory is IGyro2CLPPoolFactory, BasePoolSplitCodeFactory, 
         IERC20[] memory tokens,
         uint256[] memory sqrts,
         uint256 swapFeePercentage,
-        bool oracleEnabled,
         address owner,
         address capManager,
         ICappedLiquidity.CapParams memory capParams,
         address pauseManager
     ) external override returns (address) {
-        ExtensibleWeightedPool2Tokens.NewPoolParams memory baseParams = _makePoolParams(
-            name,
-            symbol,
-            tokens,
-            swapFeePercentage,
-            oracleEnabled,
-            owner
-        );
+        ExtensibleWeightedPool2Tokens.NewPoolParams memory baseParams = _makePoolParams(name, symbol, tokens, swapFeePercentage, owner);
 
         Gyro2CLPPool.GyroParams memory params = Gyro2CLPPool.GyroParams({
             baseParams: baseParams,
@@ -66,7 +58,6 @@ contract Gyro2CLPPoolFactory is IGyro2CLPPoolFactory, BasePoolSplitCodeFactory, 
         string memory symbol,
         IERC20[] memory tokens,
         uint256 swapFeePercentage,
-        bool oracleEnabled,
         address owner
     ) internal view returns (ExtensibleWeightedPool2Tokens.NewPoolParams memory) {
         return
@@ -79,7 +70,6 @@ contract Gyro2CLPPoolFactory is IGyro2CLPPoolFactory, BasePoolSplitCodeFactory, 
                 swapFeePercentage: swapFeePercentage,
                 pauseWindowDuration: PAUSE_WINDOW_DURATION,
                 bufferPeriodDuration: BUFFER_PERIOD_DURATION,
-                oracleEnabled: oracleEnabled,
                 owner: owner
             });
     }

@@ -203,4 +203,18 @@ library Gyro2CLPMath {
     function _calculateVirtualParameter1(uint256 invariant, uint256 _sqrtAlpha) internal pure returns (uint256) {
         return invariant.mulDown(_sqrtAlpha);
     }
+
+    /** @dev Calculates the spot price of token A in units of token B.
+     *
+     * The spot price is bounded by pool parameters due to virtual reserves. Aside from being instantaneously manipulable
+     * within a transaction, it may also not be accurate if the true price is outside of these bounds.
+     */
+    function _calcSpotPriceAinB(
+        uint256 balanceA,
+        uint256 virtualParameterA,
+        uint256 balanceB,
+        uint256 virtualParameterB
+    ) internal pure returns (uint256) {
+        return (balanceB.add(virtualParameterB)).divUp((balanceA.add(virtualParameterA)));
+    }
 }
