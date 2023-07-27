@@ -3,8 +3,7 @@ name = "concentrated-lps"
 version = "0.1.0"
 description = ""
 authors = ["José Ribeiro <jose@bleu.studio>"]
-packages = [{ include = "concentrated_lps" }]
-exclude = ["tests/**/test_*.py"]
+packages = [{ include = "concentrated_lps" }, { include = "tests" }]
 
 [tool.poetry.dependencies]
 python = ">=3.9,<3.13"
