@@ -4,7 +4,7 @@
 name = "attrs"
 version = "23.1.0"
 description = "Classes Without Boilerplate"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -35,7 +35,7 @@ files = [
 name = "exceptiongroup"
 version = "1.1.2"
 description = "Backport of PEP 654 (exception groups)"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -50,7 +50,7 @@ test = ["pytest (>=6)"]
 name = "hypothesis"
 version = "6.82.0"
 description = "A library for property-based testing"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.8"
 files = [
@@ -325,7 +325,7 @@ files = [
 name = "sortedcontainers"
 version = "2.4.0"
 description = "Sorted Containers -- Sorted List, Sorted Dict, Sorted Set"
-category = "main"
+category = "dev"
 optional = false
 python-versions = "*"
 files = [
@@ -375,4 +375,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9,<3.13"
-content-hash = "3db6b84e0ec416b2a2326ea9ff814b2d448c5c6a6c3c700c385c903fc6f5e461"
+content-hash = "7f8bee8aa88d116d2014c16e6b7d343394f40f96a99d6973da3d756e7a321707"
