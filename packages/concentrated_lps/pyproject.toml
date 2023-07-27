@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "concentrated-lps"
+version = "0.1.0"
+description = ""
+authors = ["José Ribeiro <jose@bleu.studio>"]
+packages = [{ include = "concentrated_lps" }]
+exclude = ["tests/**/test_*.py"]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.13"
+hypothesis = "^6.82.0"
+
+[tool.poetry.group.dev.dependencies]
+numpy = "^1.25.1"
+scipy = "^1.11.1"
+pandas = "^2.0.3"
+tabulate = "^0.9.0"
+hypothesis = "^6.82.0"
+pytest = "^7.4.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
