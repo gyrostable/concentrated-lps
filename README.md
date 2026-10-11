@@ -4,6 +4,8 @@ Gyroscope concentrated liquidity pools based on Balancer V2. 2-CLPs and 3-CLPs.
 
 For docs see: https://docs.gyro.finance/gyroscope-protocol/concentrated-liquidity-pools
 
+Refer to [gyro-pools](https://github.com/gyrostable/gyro-pools) for most up-to-date public code repository and license information.
+
 ## Repo Setup
 
 This project uses Brownie as its main testing framework but is also
@@ -71,4 +73,4 @@ This writes log files to `analysis/gas/`.
 
 ## Licensing
 
-Superluminal Labs Ltd. is the owner of this software and any accompanying files contained herein (collectively, this “Software”). This Software is not covered by the General Public License ("GPL") and does not confer any rights to the user thereunder. None of the code incorporated into the Software was GPL-licensed, and Superluminal Labs Ltd. has received prior custom licenses for all such code, including a special hybrid license between Superluminal Labs Ltd and Balancer Labs OÜ [Special Licence](./license/GyroscopeBalancerLicense.pdf).
+FTL Labs is the owner of this software and any accompanying files contained herein (collectively, this “Software”). This Software is not covered by the General Public License ("GPL") and does not confer any rights to the user thereunder. None of the code incorporated into the Software was GPL-licensed, and FTL Labs has received prior custom licenses for all such code, including a special hybrid license between FTL Labs and Balancer Labs OÜ [Special Licence](./license/GyroscopeBalancerLicense.pdf).
